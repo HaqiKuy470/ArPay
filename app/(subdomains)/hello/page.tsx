@@ -168,7 +168,7 @@ export default function ArPayHackathon() {
                   maxWidth: 520, lineHeight: 1.6, marginBottom: 36,
                 }}>
                   A trustless settlement protocol bridging Solana on-chain programmability
-                  to Indonesia's 30M+ QRIS merchant network. Merchants receive IDR.
+                  to Indonesia&apos;s 30M+ QRIS merchant network. Merchants receive IDR.
                   Users stay self-custodial.
                 </p>
 
@@ -223,7 +223,7 @@ export default function ArPayHackathon() {
                     ))}
                     <span style={{ color: "#4a5568", marginLeft: 8, fontSize: 11 }}>arpay_settlement.log</span>
                   </div>
-                  <div style={{ color: "#4a5568", marginBottom: 8 }}>$ arpay simulate --amount 12.5 USDC --merchant "Geprek Legend"</div>
+                  <div style={{ color: "#4a5568", marginBottom: 8 }}>$ arpay simulate --amount 12.5 USDC --merchant &quot;Geprek Legend&quot;</div>
                   <div style={{ color: "#c9d4dc" }}>Send: <span style={{ color: "#818cf8" }}>12.500000 USDC</span></div>
                   <div style={{ color: "#c9d4dc" }}>Rate: <span style={{ color: "#818cf8" }}>1 USDC = Rp 15,840</span></div>
                   <div style={{ color: "#c9d4dc" }}>Receive: <span style={{ color: "#4ade80" }}>Rp 198,000</span></div>
