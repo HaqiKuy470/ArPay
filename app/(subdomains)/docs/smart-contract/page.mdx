@@ -1,0 +1,670 @@
+# Smart Contract API Reference
+
+Complete documentation for the ArPay Solana program deployed on Solana Mainnet-Beta and Devnet.
+
+## Program Information
+
+| Property | Value |
+|----------|-------|
+| **Program ID** | `ArPayXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` |
+| **Framework** | Anchor 0.29 |
+| **Language** | Rust 1.75 |
+| **Cluster** | Mainnet-Beta, Devnet |
+| **Repository** | [github.com/arpay/smart-contract](https://github.com) |
+
+## Program Overview
+
+The ArPay program implements a trustless escrow mechanism for crypto-to-fiat settlements using Program Derived Addresses (PDAs) as atomic fund locks.
+
+**Core functionality:**
+1. Accept USDC from payers into PDA escrow
+2. Emit events for off-chain oracle processing
+3. Release USDC to treasury upon confirmed fiat disbursement
+4. Enable automatic refunds after timeout
+
+---
+
+## Instructions
+
+<div className="grid grid-cols-1 gap-2 my-6">
+  <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+    <span className="font-mono text-green-400 text-sm font-bold">01</span>
+    <a href="#initialize" className="font-mono text-slate-300 hover:text-white text-sm"><code>initialize</code></a>
+    <span className="text-slate-500 text-xs ml-auto">Deploy once</span>
+  </div>
+  <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+    <span className="font-mono text-green-400 text-sm font-bold">02</span>
+    <a href="#initiate_settlement" className="font-mono text-slate-300 hover:text-white text-sm"><code>initiate_settlement</code></a>
+    <span className="text-slate-500 text-xs ml-auto">Lock USDC in escrow</span>
+  </div>
+  <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+    <span className="font-mono text-green-400 text-sm font-bold">03</span>
+    <a href="#release_escrow" className="font-mono text-slate-300 hover:text-white text-sm"><code>release_escrow</code></a>
+    <span className="text-slate-500 text-xs ml-auto">Release or refund</span>
+  </div>
+</div>
+
+---
+
+### `initialize`
+
+<div className="bg-white/5 border border-white/10 rounded-lg p-4 my-4 text-sm text-slate-400">
+  Initializes the ArPay program with configuration parameters. Must be called <strong className="text-slate-200">once</strong> during deployment by the deployer keypair.
+</div>
+
+**Signature:**
+```rust
+pub fn initialize(
+    ctx: Context<Initialize>,
+    authority: Pubkey,
+    treasury: Pubkey,
+    timeout_seconds: i64,
+    max_slippage: u16,
+) -> Result<()>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `authority` | `Pubkey` | Public key authorized to release escrows |
+| `treasury` | `Pubkey` | Token account to receive released USDC |
+| `timeout_seconds` | `i64` | Seconds before permissionless refund enabled (default: 120) |
+| `max_slippage` | `u16` | Basis points for rate tolerance (default: 50 = 0.5%) |
+
+**Accounts:**
+
+| Account | Mutable | Signer | Description |
+|---------|---------|--------|-------------|
+| `config` | ✅ | ❌ | Program configuration PDA (seeds: `["config"]`) |
+| `deployer` | ✅ | ✅ | Program deployer (pays initialization) |
+| `system_program` | ❌ | ❌ | Solana System Program |
+
+**Example (TypeScript/Anchor):**
+
+```typescript
+const tx = await program.methods
+  .initialize(
+    authorityKeypair.publicKey,
+    treasuryTokenAccount,
+    120,  // 120 seconds timeout
+    50    // 0.5% max slippage
+  )
+  .accounts({
+    config: configPda,
+    deployer: deployerKeypair.publicKey,
+    systemProgram: SystemProgram.programId,
+  })
+  .signers([deployerKeypair])
+  .rpc();
+```
+
+**Errors:**
+
+<div className="flex flex-col gap-2 my-3">
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">ConfigAlreadyInitialized</code>
+    <span className="text-slate-400">Program already initialized</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">InvalidAuthority</code>
+    <span className="text-slate-400">Authority pubkey is invalid (zero address)</span>
+  </div>
+</div>
+
+---
+
+### `initiate_settlement`
+
+<div className="bg-white/5 border border-white/10 rounded-lg p-4 my-4 text-sm text-slate-400">
+  Initiates a new settlement by transferring USDC from the payer's token account into a PDA escrow. Emits <code className="text-green-300">SettlementRequested</code> event for oracle processing.
+</div>
+
+**Signature:**
+```rust
+pub fn initiate_settlement(
+    ctx: Context<InitiateSettlement>,
+    merchant_id: String,
+    idr_amount: u64,
+    usdc_amount: u64,
+    nonce: u64,
+) -> Result<()>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merchant_id` | `String` | National Merchant ID (NMID) from QRIS payload (max 25 chars) |
+| `idr_amount` | `u64` | Amount in IDR cents (e.g., 10,000,000 = Rp 100,000) |
+| `usdc_amount` | `u64` | Amount in USDC base units (6 decimals, e.g., 6,850,000 = 6.85 USDC) |
+| `nonce` | `u64` | Unique nonce for PDA derivation (prevents replay) |
+
+**Accounts:**
+
+| Account | Mutable | Signer | Description |
+|---------|---------|--------|-------------|
+| `payer` | ❌ | ✅ | User submitting transaction |
+| `payer_token_account` | ✅ | ❌ | User's USDC token account |
+| `escrow_account` | ✅ | ❌ | Escrow PDA (seeds: `["escrow", payer, merchant_id, nonce]`) |
+| `escrow_token_account` | ✅ | ❌ | Escrow's USDC token account |
+| `config` | ❌ | ❌ | Program configuration PDA |
+| `pyth_price_account` | ❌ | ❌ | Pyth USDC/USD price feed account |
+| `token_program` | ❌ | ❌ | SPL Token Program |
+| `system_program` | ❌ | ❌ | Solana System Program |
+| `rent` | ❌ | ❌ | Solana Rent Sysvar |
+
+**Events Emitted:**
+
+```rust
+#[event]
+pub struct SettlementRequested {
+    pub merchant_id: String,    // NMID from parameters
+    pub idr_amount: u64,        // IDR in cents
+    pub usdc_amount: u64,       // USDC in base units (6 decimals)
+    pub payer: Pubkey,          // Payer's public key
+    pub nonce: u64,             // Nonce for PDA uniqueness
+    pub timestamp: i64,         // Unix timestamp
+}
+```
+
+**Example:**
+
+```typescript
+const nonce = Date.now();
+const merchantId = "ID1234567890123";
+const idrAmount = 100_000 * 100;      // Rp 100,000 → cents
+const usdcAmount = 6.85 * 1_000_000; // 6.85 USDC → base units
+
+const [escrowPda] = PublicKey.findProgramAddressSync(
+  [
+    Buffer.from("escrow"),
+    payer.publicKey.toBuffer(),
+    Buffer.from(merchantId),
+    new anchor.BN(nonce).toArrayLike(Buffer, "le", 8),
+  ],
+  program.programId
+);
+
+const tx = await program.methods
+  .initiateSettlement(merchantId, idrAmount, usdcAmount, nonce)
+  .accounts({
+    payer: payer.publicKey,
+    payerTokenAccount: payerUsdcAccount,
+    escrowAccount: escrowPda,
+    escrowTokenAccount: escrowUsdcAccount,
+    config: configPda,
+    pythPriceAccount: PYTH_USDC_USD_FEED,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+    rent: SYSVAR_RENT_PUBKEY,
+  })
+  .signers([payer])
+  .rpc();
+```
+
+**Validation:**
+
+<div className="grid grid-cols-1 gap-1 my-3">
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Merchant ID length ≤ 25 characters</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> USDC amount &gt; 0</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> IDR amount &gt; 0</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Payer token account has sufficient USDC balance</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Rate slippage within tolerance (checked against Pyth price)</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Escrow PDA not already initialized (nonce uniqueness)</div>
+</div>
+
+**Errors:**
+
+<div className="flex flex-col gap-2 my-3">
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">InvalidMerchantId</code>
+    <span className="text-slate-400">Merchant ID empty or too long</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">InvalidAmount</code>
+    <span className="text-slate-400">USDC or IDR amount is zero</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">InsufficientFunds</code>
+    <span className="text-slate-400">Payer token account balance too low</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">SlippageExceeded</code>
+    <span className="text-slate-400">Current rate differs more than max_slippage from encoded rate</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">AccountAlreadyInitialized</code>
+    <span className="text-slate-400">Escrow PDA already exists (nonce collision)</span>
+  </div>
+</div>
+
+---
+
+### `release_escrow`
+
+<div className="bg-white/5 border border-white/10 rounded-lg p-4 my-4 text-sm text-slate-400">
+  Releases USDC from escrow PDA either to the protocol treasury (upon successful fiat disbursement) or back to the payer (upon disbursement failure or timeout).
+</div>
+
+**Signature:**
+```rust
+pub fn release_escrow(
+    ctx: Context<ReleaseEscrow>,
+    to_treasury: bool,
+) -> Result<()>
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `to_treasury` | `bool` | `true` = release to treasury (requires authority), `false` = refund to payer (after timeout) |
+
+**Accounts:**
+
+| Account | Mutable | Signer | Description |
+|---------|---------|--------|-------------|
+| `authority` | ❌ | ✅ | Program authority (required if `to_treasury=true`) |
+| `escrow_account` | ✅ | ❌ | Escrow PDA holding funds |
+| `escrow_token_account` | ✅ | ❌ | Escrow's USDC token account |
+| `treasury_token_account` | ✅ | ❌ | Protocol treasury USDC account (if `to_treasury=true`) |
+| `payer_token_account` | ✅ | ❌ | Original payer's USDC account (if `to_treasury=false`) |
+| `config` | ❌ | ❌ | Program configuration PDA |
+| `token_program` | ❌ | ❌ | SPL Token Program |
+| `clock` | ❌ | ❌ | Solana Clock Sysvar |
+
+**Authorization Logic:**
+
+```rust
+if to_treasury {
+    // Release to treasury (disbursement confirmed)
+    require!(
+        authority.key() == config.authority,
+        ErrorCode::UnauthorizedRelease
+    );
+} else {
+    // Refund to payer (timeout expired)
+    let clock = Clock::get()?;
+    require!(
+        clock.unix_timestamp > escrow.created_at + config.timeout_seconds,
+        ErrorCode::TimeoutNotReached
+    );
+}
+```
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
+  <div className="border border-white/10 rounded-lg p-4 bg-white/5">
+    <div className="text-xs font-mono text-green-400 font-bold mb-3 uppercase tracking-wider">Treasury Release</div>
+    <div className="text-xs text-slate-400 mb-3">Called by oracle after Xendit confirms disbursement</div>
+
+```typescript
+const tx = await program.methods
+  .releaseEscrow(true)
+  .accounts({
+    authority: authorityKeypair.publicKey,
+    escrowAccount: escrowPda,
+    escrowTokenAccount: escrowUsdcAccount,
+    treasuryTokenAccount: treasuryUsdcAccount,
+    payerTokenAccount: PublicKey.default,
+    config: configPda,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    clock: SYSVAR_CLOCK_PUBKEY,
+  })
+  .signers([authorityKeypair])
+  .rpc();
+```
+
+  </div>
+  <div className="border border-white/10 rounded-lg p-4 bg-white/5">
+    <div className="text-xs font-mono text-yellow-400 font-bold mb-3 uppercase tracking-wider">Payer Refund</div>
+    <div className="text-xs text-slate-400 mb-3">Called by anyone after 120s timeout — no signature required</div>
+
+```typescript
+const tx = await program.methods
+  .releaseEscrow(false)
+  .accounts({
+    authority: PublicKey.default,
+    escrowAccount: escrowPda,
+    escrowTokenAccount: escrowUsdcAccount,
+    treasuryTokenAccount: PublicKey.default,
+    payerTokenAccount: payerUsdcAccount,
+    config: configPda,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    clock: SYSVAR_CLOCK_PUBKEY,
+  })
+  .rpc();
+```
+
+  </div>
+</div>
+
+**Errors:**
+
+<div className="flex flex-col gap-2 my-3">
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">UnauthorizedRelease</code>
+    <span className="text-slate-400">Authority signature invalid (if `to_treasury=true`)</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">TimeoutNotReached</code>
+    <span className="text-slate-400">Current time is less than escrow creation time + timeout (if `to_treasury=false`)</span>
+  </div>
+  <div className="flex items-start gap-3 text-sm">
+    <code className="text-red-400 shrink-0">EscrowAlreadyReleased</code>
+    <span className="text-slate-400">Escrow PDA already closed</span>
+  </div>
+</div>
+
+---
+
+## Account Schemas
+
+### `Config`
+
+Program-wide configuration stored in a PDA with seeds `["config"]`.
+
+```rust
+#[account]
+pub struct Config {
+    pub authority: Pubkey,       // 32 bytes
+    pub treasury: Pubkey,        // 32 bytes
+    pub timeout_seconds: i64,    // 8 bytes
+    pub max_slippage: u16,       // 2 bytes
+    pub bump: u8,                // 1 byte
+}
+// Total size: 8 (discriminator) + 75 = 83 bytes
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `authority` | `Pubkey` | Public key authorized to release escrows to treasury |
+| `treasury` | `Pubkey` | Token account receiving released USDC |
+| `timeout_seconds` | `i64` | Seconds before permissionless refund (default: 120) |
+| `max_slippage` | `u16` | Max rate deviation in basis points (default: 50 = 0.5%) |
+| `bump` | `u8` | PDA bump seed |
+
+---
+
+### `Escrow`
+
+Individual settlement escrow stored in a PDA with seeds `["escrow", payer, merchant_id, nonce]`.
+
+```rust
+#[account]
+pub struct Escrow {
+    pub payer: Pubkey,         // 32 bytes
+    pub merchant_id: String,   // 4 + 25 = 29 bytes (max)
+    pub idr_amount: u64,       // 8 bytes
+    pub usdc_amount: u64,      // 8 bytes
+    pub nonce: u64,            // 8 bytes
+    pub created_at: i64,       // 8 bytes
+    pub bump: u8,              // 1 byte
+}
+// Total size: 8 (discriminator) + 94 = 102 bytes
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `payer` | `Pubkey` | Original payer's public key (for refund routing) |
+| `merchant_id` | `String` | National Merchant ID (NMID) from QRIS |
+| `idr_amount` | `u64` | IDR amount in cents (e.g., 10,000,000 = Rp 100,000) |
+| `usdc_amount` | `u64` | USDC amount in base units (6 decimals) |
+| `nonce` | `u64` | Unique nonce for PDA derivation |
+| `created_at` | `i64` | Unix timestamp of escrow creation |
+| `bump` | `u8` | PDA bump seed |
+
+---
+
+## Events
+
+### `SettlementRequested`
+
+Emitted by `initiate_settlement`. Signals the oracle to process fiat disbursement.
+
+```rust
+#[event]
+pub struct SettlementRequested {
+    pub merchant_id: String,
+    pub idr_amount: u64,
+    pub usdc_amount: u64,
+    pub payer: Pubkey,
+    pub nonce: u64,
+    pub timestamp: i64,
+}
+```
+
+**Example event log:**
+
+```json
+{
+  "type": "SettlementRequested",
+  "data": {
+    "merchant_id": "ID1234567890123",
+    "idr_amount": 10000000,
+    "usdc_amount": 6850000,
+    "payer": "7xJ9...kL2p",
+    "nonce": 1706889600000,
+    "timestamp": 1706889600
+  }
+}
+```
+
+**Listening via WebSocket:**
+
+```python
+async def listen_events():
+    async with connect("wss://api.mainnet-beta.solana.com") as websocket:
+        await websocket.logs_subscribe(
+            filter_={"mentions": [str(ARPAY_PROGRAM_ID)]}
+        )
+        async for log in websocket:
+            if "SettlementRequested" in log.value.logs:
+                event_data = parse_event(log.value.logs)
+                print(f"New settlement: {event_data}")
+```
+
+---
+
+## Error Codes
+
+| Code | Name | Description |
+|------|------|-------------|
+| `6000` | `ConfigAlreadyInitialized` | Program configuration already initialized |
+| `6001` | `InvalidAuthority` | Authority public key is invalid |
+| `6002` | `InvalidMerchantId` | Merchant ID is empty or exceeds 25 characters |
+| `6003` | `InvalidAmount` | USDC or IDR amount is zero |
+| `6004` | `InsufficientFunds` | Payer token account has insufficient USDC balance |
+| `6005` | `SlippageExceeded` | Exchange rate slippage exceeds configured tolerance |
+| `6006` | `AccountAlreadyInitialized` | Escrow PDA already exists (nonce collision) |
+| `6007` | `UnauthorizedRelease` | Caller not authorized to release escrow to treasury |
+| `6008` | `TimeoutNotReached` | Timeout period not elapsed for permissionless refund |
+| `6009` | `EscrowAlreadyReleased` | Escrow account already closed |
+| `6010` | `InvalidPythPrice` | Pyth price feed data is stale or invalid |
+| `6011` | `ArithmeticOverflow` | Arithmetic operation overflowed |
+
+**Handling errors (TypeScript):**
+
+```typescript
+try {
+  const tx = await program.methods.initiateSettlement(...).rpc();
+} catch (error) {
+  if (error.code === 6005) {
+    console.error("Slippage exceeded! Rate changed too much.");
+    // Refresh rate and retry
+  } else if (error.code === 6004) {
+    console.error("Insufficient USDC balance");
+    // Prompt user to deposit more
+  } else {
+    console.error("Unknown error:", error);
+  }
+}
+```
+
+---
+
+## Constants
+
+```rust
+pub const USDC_MINT: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+pub const PYTH_USDC_USD_FEED: Pubkey = pubkey!("Gnt27xtC473ZT2Mw5u8wZ68Z3gULkSTb5DuxJy7eJotD");
+
+pub const DEFAULT_TIMEOUT_SECONDS: i64 = 120;
+pub const DEFAULT_MAX_SLIPPAGE: u16 = 50;  // 0.5%
+
+pub const MAX_MERCHANT_ID_LENGTH: usize = 25;
+```
+
+---
+
+## PDA Derivations
+
+### Config PDA
+
+```typescript
+const [configPda, configBump] = PublicKey.findProgramAddressSync(
+  [Buffer.from("config")],
+  program.programId
+);
+```
+
+### Escrow PDA
+
+```typescript
+const [escrowPda, escrowBump] = PublicKey.findProgramAddressSync(
+  [
+    Buffer.from("escrow"),
+    payerPublicKey.toBuffer(),
+    Buffer.from(merchantId),
+    new anchor.BN(nonce).toArrayLike(Buffer, "le", 8),
+  ],
+  program.programId
+);
+```
+
+---
+
+## Integration Examples
+
+### React Hook for Settlements
+
+```typescript
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+import { useState } from 'react';
+
+export function useArPaySettlement() {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const [loading, setLoading] = useState(false);
+
+  const initiateSettlement = async (
+    merchantId: string,
+    idrAmount: number,
+    usdcAmount: number
+  ) => {
+    if (!wallet.publicKey) throw new Error("Wallet not connected");
+
+    setLoading(true);
+    try {
+      const provider = new AnchorProvider(connection, wallet as any, {});
+      const program = new Program(IDL, PROGRAM_ID, provider);
+
+      const nonce = Date.now();
+      const tx = await program.methods
+        .initiateSettlement(
+          merchantId,
+          idrAmount * 100,        // Convert to cents
+          usdcAmount * 1_000_000, // Convert to base units
+          nonce
+        )
+        .accounts({
+          // ... derived accounts
+        })
+        .rpc();
+
+      return { success: true, signature: tx };
+    } catch (error) {
+      return { success: false, error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { initiateSettlement, loading };
+}
+```
+
+---
+
+## Testing
+
+### Unit Tests (Anchor)
+
+```typescript
+describe("ArPay", () => {
+  it("Initializes program configuration", async () => {
+    const tx = await program.methods
+      .initialize(authority, treasury, 120, 50)
+      .accounts({ /* ... */ })
+      .rpc();
+
+    const config = await program.account.config.fetch(configPda);
+    expect(config.authority.toString()).to.equal(authority.toString());
+  });
+
+  it("Creates settlement and locks USDC", async () => {
+    const balanceBefore = await getTokenBalance(payerTokenAccount);
+
+    await program.methods
+      .initiateSettlement("ID123", 10000000, 6850000, Date.now())
+      .accounts({ /* ... */ })
+      .rpc();
+
+    const balanceAfter = await getTokenBalance(payerTokenAccount);
+    expect(balanceBefore - balanceAfter).to.equal(6850000);
+  });
+
+  it("Refunds after timeout", async () => {
+    // ... test timeout refund logic
+  });
+});
+```
+
+---
+
+## Security Considerations
+
+<div className="flex flex-col gap-3 my-4">
+  <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10 text-sm">
+    <span className="text-yellow-400 text-base shrink-0">⚠️</span>
+    <div><strong className="text-slate-200">Always validate nonce uniqueness</strong> <span className="text-slate-400">— Use timestamps + random salt to prevent replay attacks</span></div>
+  </div>
+  <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10 text-sm">
+    <span className="text-yellow-400 text-base shrink-0">⚠️</span>
+    <div><strong className="text-slate-200">Check Pyth price staleness</strong> <span className="text-slate-400">— Pyth publishes every 400ms; reject feeds older than 2s</span></div>
+  </div>
+  <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10 text-sm">
+    <span className="text-yellow-400 text-base shrink-0">⚠️</span>
+    <div><strong className="text-slate-200">Handle timeout gracefully</strong> <span className="text-slate-400">— UI should show countdown timer and surface refund option</span></div>
+  </div>
+  <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10 text-sm">
+    <span className="text-yellow-400 text-base shrink-0">⚠️</span>
+    <div><strong className="text-slate-200">Rate-limit settlement attempts</strong> <span className="text-slate-400">— Prevent spam and denial-of-service attacks</span></div>
+  </div>
+  <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10 text-sm">
+    <span className="text-yellow-400 text-base shrink-0">⚠️</span>
+    <div><strong className="text-slate-200">Monitor escrow balances</strong> <span className="text-slate-400">— Alert if total locked USDC exceeds configured threshold</span></div>
+  </div>
+</div>
+
+---
+
+## Support & Resources
+
+- **IDL File:** [Download ArPay IDL](https://github.com/arpay/smart-contract/blob/main/target/idl/ar_pay.json)
+- **Anchor Docs:** [anchor-lang.com](https://www.anchor-lang.com)
+- **Solana Cookbook:** [solanacookbook.com](https://solanacookbook.com)
+- **Discord:** [Join ArPay Discord](https://discord.gg/arpay)
+
+For bugs or questions, open an issue on [GitHub](https://github.com/arpay/smart-contract/issues).

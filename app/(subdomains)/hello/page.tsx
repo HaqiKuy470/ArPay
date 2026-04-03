@@ -60,7 +60,6 @@ export default function ArPayHackathon() {
         position: "relative",
       }}>
 
-        {/* Grid bg */}
         <div style={{
           position: "fixed", inset: 0, zIndex: 0,
           backgroundImage: `
@@ -71,7 +70,6 @@ export default function ArPayHackathon() {
           pointerEvents: "none",
         }} />
 
-        {/* Glow spots */}
         <div style={{
           position: "fixed", top: -200, left: -200,
           width: "100vw", maxWidth: 600, height: 600,
@@ -85,7 +83,6 @@ export default function ArPayHackathon() {
           pointerEvents: "none", zIndex: 0,
         }} />
 
-        {/* NAVBAR */}
         <nav style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
           borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -127,7 +124,6 @@ export default function ArPayHackathon() {
 
         <div style={{ position: "relative", zIndex: 1 }}>
 
-          {/* HERO */}
           <section style={{ padding: "clamp(120px, 15vw, 160px) clamp(20px, 5vw, 32px) clamp(60px, 10vw, 100px)" }}>
             <div style={{ 
               maxWidth: 1200, 
@@ -137,8 +133,7 @@ export default function ArPayHackathon() {
               alignItems: "center", 
               gap: "clamp(40px, 8vw, 80px)" 
             }}>
-              
-              {/* KOLOM KIRI: Teks & Terminal */}
+
               <div style={{ flex: "1 1 500px" }}>
                 <div style={{
                   fontFamily: "'Space Mono', monospace",
@@ -179,7 +174,7 @@ export default function ArPayHackathon() {
 
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <motion.a 
-                    href="https://arpay.my.id" 
+                    href="/docs/ArPay_Protocol.pdf" 
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     style={{
@@ -190,7 +185,7 @@ export default function ArPayHackathon() {
                       textDecoration: "none", display: "inline-block"
                     }}
                   >
-                    Launch App
+                    Read Whitepaper
                   </motion.a>
                   
                   <motion.button 
@@ -211,7 +206,6 @@ export default function ArPayHackathon() {
                   </motion.button>
                 </div>
 
-                {/* TX Terminal */}
                 <div style={{
                   marginTop: 48,
                   background: "rgba(0,0,0,0.5)",
@@ -246,14 +240,12 @@ export default function ArPayHackathon() {
                 </div>
               </div>
 
-              {/* KOLOM KANAN: Placeholder Gambar/Video */}
               <div className="hide-on-mobile" style={{ flex: "1 1 400px", display: "flex", justifyContent: "center", position: "relative" }}>
-                
-                {/* Kotak Placeholder (Hapus dan ganti dengan <img /> atau <video /> nanti) */}
+
                 <div style={{ 
                   width: "100%", 
                   maxWidth: "500px",
-                  aspectRatio: "4/5", // Proporsi portrait ala layar HP
+                  aspectRatio: "4/5",
                   background: "linear-gradient(145deg, rgba(74,222,128,0.05) 0%, rgba(0,0,0,0.4) 100%)",
                   border: "2px dashed rgba(74,222,128,0.3)", 
                   borderRadius: "24px", 
@@ -274,7 +266,6 @@ export default function ArPayHackathon() {
                   </span>
                 </div>
 
-                {/* Efek glow di belakang mockup */}
                 <div style={{
                   position: "absolute",
                   top: "50%", left: "50%",
@@ -291,7 +282,6 @@ export default function ArPayHackathon() {
             </div>
           </section>
 
-          {/* STATS */}
           <section style={{
             borderTop: "1px solid rgba(255,255,255,0.06)",
             borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -316,7 +306,6 @@ export default function ArPayHackathon() {
             </div>
           </section>
 
-          {/* HOW IT WORKS */}
           <section style={{ padding: "clamp(60px, 10vw, 100px) clamp(20px, 5vw, 32px)" }}>
           <div style={{ maxWidth: 1100, margin: "0 auto" }}>
             <div style={{
@@ -335,7 +324,7 @@ export default function ArPayHackathon() {
               {steps.map((s, i) => (
                 <motion.div
                   key={i}
-                  whileTap={{ scale: 0.98 }} // Efek menekan ringan saat di-klik
+                  whileTap={{ scale: 0.98 }} 
                   onClick={() => setActiveStep(activeStep === i ? null : i)}
                   style={{
                     display: "grid",
@@ -356,7 +345,6 @@ export default function ArPayHackathon() {
                   <div>
                     <div style={{ fontSize: "clamp(15px, 2vw, 16px)", color: "#fff", fontWeight: 700, marginBottom: activeStep === i ? 8 : 0 }}>{s.label}</div>
                     
-                    {/* AnimatePresence untuk membuat transisi buka-tutup akordeon lebih smooth */}
                     <AnimatePresence>
                       {activeStep === i && (
                         <motion.div 
@@ -387,7 +375,6 @@ export default function ArPayHackathon() {
           </div>
           </section>
 
-          {/* ARCHITECTURE */}
           <section style={{
             padding: "clamp(60px, 10vw, 80px) clamp(20px, 5vw, 32px)",
             borderTop: "1px solid rgba(255,255,255,0.06)",
@@ -433,7 +420,6 @@ export default function ArPayHackathon() {
                 ))}
               </div>
 
-              {/* Atomic guarantee */}
               <div style={{
                 marginTop: 40,
                 padding: "24px clamp(16px, 4vw, 28px)",
@@ -455,7 +441,6 @@ export default function ArPayHackathon() {
             </div>
           </section>
 
-          {/* USE CASES */}
           <section style={{ padding: "clamp(60px, 10vw, 100px) clamp(20px, 5vw, 32px)" }}>
           <div style={{ maxWidth: 1100, margin: "0 auto" }}>
             <div style={{
@@ -502,7 +487,6 @@ export default function ArPayHackathon() {
           </div>
           </section>
 
-          {/* CTA */}
           <section style={{
             padding: "clamp(60px, 10vw, 80px) clamp(20px, 5vw, 32px) clamp(80px, 15vw, 120px)",
             textAlign: "center",
@@ -541,7 +525,6 @@ export default function ArPayHackathon() {
             </motion.a>
           </section>
 
-          {/* FOOTER */}
           <footer style={{
             padding: "24px clamp(20px, 5vw, 32px)",
             borderTop: "1px solid rgba(255,255,255,0.06)",

@@ -1,0 +1,671 @@
+# Developer Quickstart
+
+This guide will walk you through integrating ArPay into your application, from setting up your development environment to processing your first transaction.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Node.js** ≥ 16.x installed
+- **Rust** 1.75+ and **Anchor** 0.29+ (for smart contract development)
+- **Python** 3.11+ (for oracle bridge)
+- A **Solana wallet** (Phantom, Solflare, etc.)
+- **SOL tokens** for transaction fees
+- **USDC (SPL)** on Solana devnet/mainnet
+
+## Quick Overview
+
+```bash
+# What we'll build
+┌─────────────┐
+│ Your App    │  ← Integrates ArPay payment flow
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ ArPay SDK   │  ← Handles blockchain interaction
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Solana      │  ← Executes smart contract
+└─────────────┘
+```
+
+## Option 1: Frontend Integration (No Backend Required)
+
+Perfect for static sites, PWAs, or client-side apps.
+
+### Step 1: Install Dependencies
+
+```bash
+npm install @solana/web3.js @solana/wallet-adapter-react @solana/wallet-adapter-wallets
+npm install @coral-xyz/anchor @project-serum/anchor
+npm install @pythnetwork/client
+```
+
+### Step 2: Set Up Wallet Provider
+
+```tsx
+// app/providers/WalletProvider.tsx
+'use client';
+
+import { FC, useMemo } from 'react';
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { clusterApiUrl } from '@solana/web3.js';
+
+require('@solana/wallet-adapter-react-ui/styles.css');
+
+export const WalletContextProvider: FC<{ children: React.ReactNode }> = ({ children }) => {
+  const network = WalletAdapterNetwork.Mainnet;
+  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter({ network }),
+    ],
+    [network]
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          {children}
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
+};
+```
+
+### Step 3: Create Payment Component
+
+```tsx
+// components/ArPayButton.tsx
+'use client';
+
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+import { useState } from 'react';
+import { ArPayIDL } from '@/idl/arpay';
+
+const ARPAY_PROGRAM_ID = new PublicKey('ArPayXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+
+interface ArPayButtonProps {
+  merchantId: string;      // QRIS NMID
+  amountIDR: number;        // Amount in IDR (e.g., 100000 for Rp 100,000)
+  onSuccess?: (signature: string) => void;
+  onError?: (error: Error) => void;
+}
+
+export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPayButtonProps) {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string>('');
+
+  const handlePayment = async () => {
+    if (!wallet.publicKey || !wallet.signTransaction) {
+      alert('Please connect your wallet first!');
+      return;
+    }
+
+    setLoading(true);
+    setStatus('Fetching exchange rate...');
+
+    try {
+      // 1. Get USDC/IDR rate
+      const rate = await fetchExchangeRate();
+      const usdcAmount = Math.ceil((amountIDR / rate) * 1_000_000); // 6 decimals
+      
+      setStatus(`Rate: 1 USDC = ${rate.toFixed(2)} IDR`);
+
+      // 2. Build and send transaction
+      const provider = new AnchorProvider(connection, wallet as any, {});
+      const program = new Program(ArPayIDL, ARPAY_PROGRAM_ID, provider);
+
+      setStatus('Preparing transaction...');
+
+      const nonce = Date.now(); // Use timestamp as nonce
+      const tx = await program.methods
+        .initiateSettlement(
+          merchantId,
+          amountIDR * 100,  // Convert to cents
+          usdcAmount,
+          nonce
+        )
+        .accounts({
+          payer: wallet.publicKey,
+          // ... other accounts (derived programmatically)
+        })
+        .rpc();
+
+      setStatus('Transaction confirmed!');
+      console.log('Transaction signature:', tx);
+      
+      onSuccess?.(tx);
+      
+      // Poll for settlement completion
+      await pollSettlementStatus(tx);
+      
+    } catch (error) {
+      console.error('Payment failed:', error);
+      setStatus('Payment failed');
+      onError?.(error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handlePayment}
+      disabled={loading || !wallet.connected}
+      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50"
+    >
+      {loading ? (
+        <span className="flex items-center gap-2">
+          <Spinner />
+          {status}
+        </span>
+      ) : (
+        `Pay Rp ${amountIDR.toLocaleString('id-ID')}`
+      )}
+    </button>
+  );
+}
+
+// Helper: Fetch USDC/IDR exchange rate
+async function fetchExchangeRate(): Promise<number> {
+  // In production, use Pyth Network on-chain oracle
+  const pythPrice = await fetch('https://xc-mainnet.pyth.network/api/latest_price_feeds?ids[]=0x...')
+    .then(r => r.json());
+  
+  const usdcUsd = pythPrice[0].price.price / (10 ** pythPrice[0].price.expo);
+  
+  // Fetch USD/IDR from off-chain API
+  const usdIdr = await fetch('https://api.exchangerate-api.com/v4/latest/USD')
+    .then(r => r.json())
+    .then(data => data.rates.IDR);
+  
+  return usdcUsd * usdIdr;
+}
+
+// Helper: Poll for settlement completion
+async function pollSettlementStatus(signature: string, maxAttempts = 20): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Check if escrow has been released (settlement complete)
+    // In production, listen to WebSocket events or query PDA status
+    
+    console.log(`Polling attempt ${i + 1}/${maxAttempts}`);
+  }
+}
+```
+
+### Step 4: Use in Your App
+
+```tsx
+// app/page.tsx
+import { ArPayButton } from '@/components/ArPayButton';
+import { WalletContextProvider } from '@/providers/WalletProvider';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+
+export default function Home() {
+  return (
+    <WalletContextProvider>
+      <main className="min-h-screen p-8">
+        <div className="max-w-md mx-auto">
+          <h1 className="text-3xl font-bold mb-8">ArPay Demo</h1>
+          
+          <WalletMultiButton className="mb-4" />
+          
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4">Pay Merchant</h2>
+            
+            <ArPayButton
+              merchantId="ID1234567890123"  // QRIS NMID
+              amountIDR={100000}             // Rp 100,000
+              onSuccess={(sig) => {
+                console.log('Payment successful!', sig);
+                alert('Payment sent! Merchant will receive IDR in ~5 seconds.');
+              }}
+              onError={(err) => {
+                console.error('Payment failed:', err);
+                alert('Payment failed. Please try again.');
+              }}
+            />
+          </div>
+        </div>
+      </main>
+    </WalletContextProvider>
+  );
+}
+```
+
+### Step 5: Test on Devnet
+
+```bash
+# 1. Get devnet SOL
+solana airdrop 2 <YOUR_WALLET_ADDRESS> --url devnet
+
+# 2. Get devnet USDC
+# Visit https://spl-token-faucet.com/ and request USDC
+
+# 3. Run your app
+npm run dev
+
+# 4. Navigate to http://localhost:3000 and test!
+```
+
+---
+
+## Option 2: Full-Stack Integration (With Backend)
+
+For applications that need server-side verification, webhooks, or custom business logic.
+
+### Backend Setup (Node.js/Express)
+
+```typescript
+// server/index.ts
+import express from 'express';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+
+const app = express();
+app.use(express.json());
+
+const connection = new Connection('https://api.mainnet-beta.solana.com');
+const ARPAY_PROGRAM_ID = new PublicKey('ArPayXXX...');
+
+// Endpoint: Create payment intent
+app.post('/api/create-payment', async (req, res) => {
+  const { merchantId, amountIDR } = req.body;
+  
+  // 1. Fetch current USDC/IDR rate
+  const rate = await fetchExchangeRate();
+  const usdcAmount = Math.ceil((amountIDR / rate) * 1_000_000);
+  
+  // 2. Generate unique payment reference
+  const paymentId = generatePaymentId();
+  
+  // 3. Store in database
+  await db.payments.create({
+    id: paymentId,
+    merchantId,
+    amountIDR,
+    usdcAmount,
+    rate,
+    status: 'pending',
+    createdAt: new Date(),
+  });
+  
+  res.json({
+    paymentId,
+    usdcAmount,
+    rate,
+    expiresAt: Date.now() + 120_000, // 2 minutes
+  });
+});
+
+// Endpoint: Verify payment status
+app.get('/api/payment/:id', async (req, res) => {
+  const payment = await db.payments.findOne({ id: req.params.id });
+  
+  if (!payment) {
+    return res.status(404).json({ error: 'Payment not found' });
+  }
+  
+  // Query Solana for transaction status
+  const escrowPda = deriveEscrowPDA(payment.merchantId, payment.nonce);
+  const escrowAccount = await connection.getAccountInfo(escrowPda);
+  
+  if (!escrowAccount) {
+    payment.status = 'settled'; // Escrow released
+  }
+  
+  res.json(payment);
+});
+
+// Webhook: Receive settlement notifications from oracle
+app.post('/webhooks/settlement', async (req, res) => {
+  const { signature, merchantId, nonce, status } = req.body;
+  
+  // Verify signature (important!)
+  const isValid = verifyWebhookSignature(req.headers['x-signature'], req.body);
+  if (!isValid) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  
+  // Update payment status
+  await db.payments.updateOne(
+    { merchantId, nonce },
+    { status, settledAt: new Date() }
+  );
+  
+  // Trigger business logic (e.g., fulfill order, send email)
+  await fulfillOrder(merchantId, nonce);
+  
+  res.json({ received: true });
+});
+
+app.listen(3001, () => {
+  console.log('ArPay backend running on port 3001');
+});
+```
+
+---
+
+## Option 3: QR Code Integration
+
+Enable physical merchants to accept crypto payments via QRIS scanners.
+
+### Generate ArPay-Compatible QRIS
+
+```typescript
+// utils/qris.ts
+import QRCode from 'qrcode';
+
+interface QRISPayload {
+  merchantId: string;      // National Merchant ID (NMID)
+  merchantName: string;
+  amount: number;          // IDR amount
+  transactionId?: string;
+}
+
+export async function generateArPayQRIS(payload: QRISPayload): Promise<string> {
+  // Encode QRIS according to EMVCo Merchant Presented QR spec
+  const qrisData = encodeEMVCo({
+    payloadFormatIndicator: '01',
+    pointOfInitiationMethod: '12',  // Dynamic QR
+    merchantAccountInformation: {
+      globallyUniqueIdentifier: payload.merchantId,
+      merchantName: payload.merchantName,
+    },
+    transactionCurrency: '360',     // IDR currency code
+    transactionAmount: payload.amount.toString(),
+    countryCode: 'ID',
+    merchantCategoryCode: '0000',
+    additionalData: {
+      referenceLabel: payload.transactionId || generateTransactionId(),
+    },
+  });
+  
+  // Generate QR code
+  const qrCodeDataURL = await QRCode.toDataURL(qrisData, {
+    errorCorrectionLevel: 'M',
+    width: 300,
+  });
+  
+  return qrCodeDataURL;
+}
+
+// Encode according to EMVCo spec (simplified)
+function encodeEMVCo(data: any): string {
+  let payload = '';
+  
+  payload += encodeTLV('00', data.payloadFormatIndicator);
+  payload += encodeTLV('01', data.pointOfInitiationMethod);
+  payload += encodeTLV('52', data.merchantCategoryCode);
+  payload += encodeTLV('53', data.transactionCurrency);
+  payload += encodeTLV('54', data.transactionAmount);
+  payload += encodeTLV('58', data.countryCode);
+  
+  // Merchant Account Information (Tag 26 for ID)
+  const merchantInfo = 
+    encodeTLV('00', data.merchantAccountInformation.globallyUniqueIdentifier) +
+    encodeTLV('01', data.merchantAccountInformation.merchantName);
+  payload += encodeTLV('26', merchantInfo);
+  
+  // Additional Data (Tag 62)
+  const additionalData = encodeTLV('01', data.additionalData.referenceLabel);
+  payload += encodeTLV('62', additionalData);
+  
+  // CRC (Tag 63) - calculate and append
+  const crc = calculateCRC(payload + '6304');
+  payload += encodeTLV('63', crc);
+  
+  return payload;
+}
+
+function encodeTLV(tag: string, value: string): string {
+  const length = value.length.toString().padStart(2, '0');
+  return tag + length + value;
+}
+
+function calculateCRC(data: string): string {
+  // ISO/IEC 13239 CRC-16-CCITT
+  // Implementation omitted for brevity
+  return '0000'; // Placeholder
+}
+```
+
+---
+
+## Smart Contract Development
+
+### Clone and Build
+
+```bash
+# Clone ArPay repository
+git clone https://github.com/arpay/smart-contract
+cd smart-contract
+
+# Install dependencies
+yarn install
+
+# Build program
+anchor build
+
+# Run tests
+anchor test
+
+# Deploy to devnet
+anchor deploy --provider.cluster devnet
+```
+
+### Program Structure
+
+```
+programs/arpay/
+├── src/
+│   ├── lib.rs                 # Main program logic
+│   ├── instructions/
+│   │   ├── initiate_settlement.rs
+│   │   ├── release_escrow.rs
+│   │   └── mod.rs
+│   ├── state/
+│   │   ├── escrow.rs          # Escrow account schema
+│   │   └── mod.rs
+│   ├── errors.rs              # Custom error codes
+│   └── events.rs              # Event definitions
+├── Cargo.toml
+└── Xargo.toml
+```
+
+### Writing Tests
+
+```typescript
+// tests/arpay.ts
+import * as anchor from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
+import { ArPay } from '../target/types/ar_pay';
+import { expect } from 'chai';
+
+describe('arpay', () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const program = anchor.workspace.ArPay as Program<ArPay>;
+
+  it('Initiates settlement and locks USDC in escrow', async () => {
+    const merchantId = 'ID1234567890123';
+    const idrAmount = 100_000_00; // Rp 100,000 in cents
+    const usdcAmount = 6_850_000;  // 6.85 USDC
+    const nonce = Date.now();
+
+    const tx = await program.methods
+      .initiateSettlement(merchantId, idrAmount, usdcAmount, nonce)
+      .accounts({
+        payer: provider.wallet.publicKey,
+        // ... derived accounts
+      })
+      .rpc();
+
+    console.log('Transaction signature:', tx);
+
+    // Verify escrow account created
+    const [escrowPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('escrow'),
+        provider.wallet.publicKey.toBuffer(),
+        Buffer.from(merchantId),
+        new anchor.BN(nonce).toArrayLike(Buffer, 'le', 8),
+      ],
+      program.programId
+    );
+
+    const escrowAccount = await program.account.escrow.fetch(escrowPda);
+    expect(escrowAccount.usdcAmount.toNumber()).to.equal(usdcAmount);
+  });
+
+  it('Releases escrow to treasury after disbursement', async () => {
+    // Test authority-signed release
+    // ... (implementation omitted)
+  });
+
+  it('Refunds payer after timeout', async () => {
+    // Test timeout refund mechanism
+    // ... (implementation omitted)
+  });
+});
+```
+
+---
+
+## Oracle Bridge Setup
+
+### Prerequisites
+
+```bash
+# Install Python dependencies
+pip install solana solders aiohttp python-dotenv websockets
+```
+
+### Configuration
+
+```bash
+# .env
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+SOLANA_WSS_URL=wss://api.mainnet-beta.solana.com
+ARPAY_PROGRAM_ID=ArPayXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+AUTHORITY_PRIVATE_KEY=<base58_encoded_keypair>
+XENDIT_API_KEY=<your_xendit_key>
+DATABASE_URL=postgresql://user:pass@localhost/arpay
+```
+
+### Run Oracle
+
+```bash
+python oracle_bridge/main.py
+```
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY oracle_bridge/ .
+
+CMD ["python", "main.py"]
+```
+
+```bash
+# Build and run
+docker build -t arpay-oracle .
+docker run -d --env-file .env --name arpay-oracle arpay-oracle
+```
+
+---
+
+## Testing Checklist
+
+- [ ] **Devnet Testing**
+  - [ ] Connect wallet to devnet
+  - [ ] Request devnet SOL from faucet
+  - [ ] Request devnet USDC from faucet
+  - [ ] Submit test transaction
+  - [ ] Verify escrow creation on Solscan
+  - [ ] Confirm event emission in logs
+
+- [ ] **Integration Testing**
+  - [ ] Test rate fetching (Pyth oracle)
+  - [ ] Test slippage protection
+  - [ ] Test timeout refund mechanism
+  - [ ] Test oracle event listening
+  - [ ] Test Xendit API (sandbox mode)
+
+- [ ] **Error Handling**
+  - [ ] Insufficient USDC balance
+  - [ ] Network disconnection
+  - [ ] Rate slippage exceeded
+  - [ ] Payment gateway failure
+  - [ ] Duplicate transaction (nonce replay)
+
+---
+
+## Common Issues & Solutions
+
+### Issue: "Simulation failed: Insufficient funds"
+
+**Solution:** Ensure your wallet has enough SOL for transaction fees (~0.00001 SOL) and USDC for the payment amount.
+
+```bash
+# Check balances
+solana balance <YOUR_WALLET>
+spl-token balance EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+```
+
+### Issue: "Account already initialized"
+
+**Solution:** Nonce collision. Ensure each transaction uses a unique nonce (timestamp + random salt recommended).
+
+```typescript
+const nonce = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+```
+
+### Issue: "Slippage tolerance exceeded"
+
+**Solution:** Rate changed between display and execution. Increase tolerance or refresh rate immediately before signing.
+
+```typescript
+const MAX_SLIPPAGE = 0.01; // 1%
+```
+
+---
+
+## Next Steps
+
+✅ **You've completed the quickstart!**
+
+Dive deeper:
+- **[Architecture](/docs/architecture)** — Understand the tri-layer design
+- **[Smart Contract API](/docs/smart-contract)** — Full instruction reference
+- **[Security Best Practices](/docs/security)** — Production checklist
+- **[API Reference](/docs/api-reference)** — Complete SDK documentation
+
+Need help? Join our [Discord community](https://discord.gg/arpay) or open an issue on [GitHub](https://github.com/arpay).

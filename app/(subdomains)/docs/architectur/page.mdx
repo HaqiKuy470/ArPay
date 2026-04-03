@@ -1,0 +1,666 @@
+# ArPay Protocol Architecture
+
+## System Overview
+
+ArPay implements a **tri-layer architecture** that cleanly separates concerns between blockchain operations, off-chain event processing, and traditional banking infrastructure.
+
+## Tri-Layer Design
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                    CLIENT LAYER (L1)                      │
+│                                                           │
+│  ┌─────────────┐      ┌──────────────┐                    │
+│  │  Next.js    │◄────►│ Solana Pay   │                    │
+│  │  PWA        │      │  URI Scheme  │                    │
+│  └─────────────┘      └──────────────┘                    │
+│                                                           │
+│  • QR Code Scanning        • Wallet Integration           │
+│  • Rate Display            • Transaction Signing          │
+│  • UX/UI                   • Web3.js / Wallet Adapter     │
+└───────────────────────────────────────────────────────────┘
+                            │
+                            │ signs & submits USDC tx
+                            ▼
+┌───────────────────────────────────────────────────────────┐
+│                   ON-CHAIN LAYER (L2)                     │
+│                                                           │
+│  ┌─────────────────────────────────────────────────┐      │
+│  │        ArPay Solana Program (Rust/Anchor)       │      │
+│  │                                                 │      │
+│  │  Instructions:                                  │      │
+│  │  • initiate_settlement()                        │      │
+│  │  • release_escrow()                             │      │
+│  │                                                 │      │
+│  │  State:                                         │      │
+│  │  • Program Derived Addresses (PDAs)             │      │
+│  │  • SPL Token Accounts                           │      │
+│  └─────────────────────────────────────────────────┘      │
+│                                                           │
+│  • Atomic USDC Transfers    • Slippage Protection         │
+│  • PDA Escrow               • Event Emission              │
+│  • Timeout Refunds          • Nonce Management            │
+└───────────────────────────────────────────────────────────┘
+                            │
+                            │ emits SettlementRequested event
+                            ▼
+┌───────────────────────────────────────────────────────────┐
+│                 ORACLE & BRIDGE LAYER (L3)                │
+│                                                           │
+│  ┌─────────────┐      ┌──────────────┐                    │
+│  │  Python     │◄────►│   Xendit     │                    │
+│  │  Daemon     │ POST │   Gateway    │                    │
+│  │  (asyncio)  │      │   API        │                    │
+│  └─────────────┘      └──────────────┘                    │
+│                                                           │
+│  • WebSocket RPC Listener  • Retry Logic                  │
+│  • Event Parsing           • State Recovery               │
+│  • Rate Validation         • Refund Submission            │
+└───────────────────────────────────────────────────────────┘
+                            │
+                            │ POST /disbursements (IDR)
+                            ▼
+┌───────────────────────────────────────────────────────────┐
+│                 MERCHANT BANK ACCOUNT                     │
+│                                                           │
+│                   BI-FAST Settlement                      │
+│              (Bank Indonesia Instant Transfer)            │
+│                                                           │
+│  • &lt;2s finality            • 24/7 availability         │
+│  • Irrevocable settlement  • National coverage            │
+└───────────────────────────────────────────────────────────┘
+```
+
+## Layer 1: Client Application
+
+### Technology Stack
+
+- **Framework:** Next.js 14 with App Router
+- **PWA:** Progressive Web App (installable, offline-capable)
+- **Wallet Integration:** `@solana/wallet-adapter-react`
+- **Payment Protocol:** Solana Pay URI scheme
+- **Price Oracle Client:** Pyth Network SDK
+
+### Key Components
+
+#### 1. QRIS Scanner
+```typescript
+// Decodes QRIS QR code payload
+const decodeQRIS = (qrPayload: string) => {
+  // EMVCo Merchant Presented QR format
+  return {
+    merchantId: extractNMID(qrPayload),    // National Merchant ID
+    amount: extractAmount(qrPayload),       // IDR in minor units
+    merchantName: extractMerchantName(qrPayload)
+  };
+};
+```
+
+#### 2. Exchange Rate Fetcher
+```typescript
+// Composites on-chain and off-chain price feeds
+const getUSDCtoIDR = async () => {
+  const pythPrice = await pythConnection.getPrice(); // USDC/USD on-chain
+  const idrRate = await fetchIDRRate();               // USD/IDR off-chain API
+  
+  return {
+    rate: pythPrice.price * idrRate,
+    confidence: pythPrice.confidence,
+    timestamp: pythPrice.publishTime
+  };
+};
+```
+
+#### 3. Transaction Builder
+```typescript
+// Constructs Solana Pay URI
+const buildSolanaPayURI = (params: PaymentParams) => {
+  const url = new URL('solana:' + ARPAY_PROGRAM_ID);
+  
+  url.searchParams.set('amount', params.usdcAmount);
+  url.searchParams.set('spl-token', USDC_MINT);
+  url.searchParams.set('reference', generateReference());
+  url.searchParams.set('label', 'ArPay Settlement');
+  url.searchParams.set('message', `Pay ${params.idrAmount} IDR to ${params.merchantName}`);
+  
+  return url.toString();
+};
+```
+
+### User Flow
+
+1. **Scan QR:** User opens PWA, scans QRIS code at merchant POS
+2. **Preview:** PWA decodes NMID and IDR amount, fetches real-time USDC/IDR rate
+3. **Approve:** User reviews conversion (e.g., "100,000 IDR = 6.85 USDC")
+4. **Sign:** Wallet adapter prompts signature from Phantom/Solflare/etc
+5. **Confirm:** PWA displays transaction status and merchant notification
+
+## Layer 2: Solana Smart Contract
+
+### Program Architecture
+
+```rust
+// programs/arpay/src/lib.rs
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+
+declare_id!("ArPayXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+
+#[program]
+pub mod arpay {
+    use super::*;
+
+    /// Initiates a settlement request
+    /// Transfers USDC from payer to PDA escrow
+    pub fn initiate_settlement(
+        ctx: Context<InitiateSettlement>,
+        merchant_id: String,
+        idr_amount: u64,
+        usdc_amount: u64,
+        nonce: u64,
+    ) -> Result<()> {
+        // Validate rate slippage
+        require!(
+            validate_rate(&ctx.accounts.pyth_price, usdc_amount, idr_amount),
+            ErrorCode::SlippageExceeded
+        );
+
+        // Transfer USDC to PDA
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer_token_account.to_account_info(),
+                to: ctx.accounts.escrow_token_account.to_account_info(),
+                authority: ctx.accounts.payer.to_account_info(),
+            },
+        );
+        token::transfer(cpi_ctx, usdc_amount)?;
+
+        // Emit event for oracle
+        emit!(SettlementRequested {
+            merchant_id,
+            idr_amount,
+            usdc_amount,
+            payer: ctx.accounts.payer.key(),
+            nonce,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// Releases escrowed USDC (authority-only or timeout)
+    pub fn release_escrow(
+        ctx: Context<ReleaseEscrow>,
+        settlement_id: String,
+        to_treasury: bool,
+    ) -> Result<()> {
+        let clock = Clock::get()?;
+        let escrow = &ctx.accounts.escrow_account;
+
+        // Check timeout or authority
+        if !to_treasury {
+            require!(
+                clock.unix_timestamp > escrow.created_at + TIMEOUT_SECONDS,
+                ErrorCode::TimeoutNotReached
+            );
+        } else {
+            require!(
+                ctx.accounts.authority.key() == AUTHORITY_PUBKEY,
+                ErrorCode::UnauthorizedRelease
+            );
+        }
+
+        // Transfer to treasury or refund to payer
+        let recipient = if to_treasury {
+            &ctx.accounts.treasury_token_account
+        } else {
+            &ctx.accounts.payer_token_account
+        };
+
+        let seeds = &[
+            b"escrow",
+            escrow.payer.as_ref(),
+            escrow.merchant_id.as_bytes(),
+            &escrow.nonce.to_le_bytes(),
+            &[escrow.bump],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.escrow_token_account.to_account_info(),
+                to: recipient.to_account_info(),
+                authority: ctx.accounts.escrow_account.to_account_info(),
+            },
+            signer,
+        );
+        token::transfer(cpi_ctx, escrow.usdc_amount)?;
+
+        Ok(())
+    }
+}
+```
+
+### PDA Derivation
+
+Program Derived Addresses ensure deterministic, trustless escrow:
+
+```rust
+// PDA seeds: ["escrow", payer_pubkey, merchant_id, nonce]
+let (escrow_pda, bump) = Pubkey::find_program_address(
+    &[
+        b"escrow",
+        payer.key().as_ref(),
+        merchant_id.as_bytes(),
+        &nonce.to_le_bytes(),
+    ],
+    &program_id,
+);
+```
+
+**Properties:**
+- No private key exists for PDA
+- Only the program can sign on behalf of PDA
+- Collision-resistant via nonce
+- Publicly derivable (anyone can verify)
+
+### Event Schema
+
+```rust
+#[event]
+pub struct SettlementRequested {
+    pub merchant_id: String,    // NMID from QRIS
+    pub idr_amount: u64,         // IDR in cents (Rp 100.000 = 10000000)
+    pub usdc_amount: u64,        // USDC in base units (6 decimals)
+    pub payer: Pubkey,           // For refund routing
+    pub nonce: u64,              // PDA seed component
+    pub timestamp: i64,          // Unix timestamp
+}
+```
+
+### Slippage Protection
+
+```rust
+fn validate_rate(
+    pyth_price: &AccountInfo,
+    usdc_amount: u64,
+    idr_amount: u64
+) -> bool {
+    let price_feed = load_price_feed_from_account(pyth_price).unwrap();
+    let current_rate = price_feed.get_current_price().unwrap();
+    
+    // Expected IDR = USDC * (USDC/USD) * (USD/IDR)
+    let expected_idr = (usdc_amount as f64) * current_rate.price * IDR_PER_USD;
+    let actual_idr = idr_amount as f64;
+    
+    let slippage = ((expected_idr - actual_idr) / expected_idr).abs();
+    
+    slippage <= MAX_SLIPPAGE // 0.005 = 0.5%
+}
+```
+
+## Layer 3: Oracle Bridge
+
+### Service Architecture
+
+```python
+# oracle_bridge/main.py
+import asyncio
+import aiohttp
+from solana.rpc.websocket_api import connect
+from solders.pubkey import Pubkey
+
+class ArPayOracle:
+    def __init__(self):
+        self.rpc_url = "wss://api.mainnet-beta.solana.com"
+        self.program_id = Pubkey.from_string("ArPayXXX...")
+        self.xendit_api_key = os.getenv("XENDIT_API_KEY")
+        
+    async def listen_events(self):
+        """Subscribe to program logs via WebSocket"""
+        async with connect(self.rpc_url) as websocket:
+            await websocket.logs_subscribe(
+                filter_={"mentions": [str(self.program_id)]}
+            )
+            
+            async for log in websocket:
+                if "SettlementRequested" in log.value.logs:
+                    await self.handle_settlement(log)
+    
+    async def handle_settlement(self, log):
+        """Process settlement event"""
+        # Parse event data
+        event = parse_settlement_event(log.value.logs)
+        
+        # Verify block status (Confirmed minimum)
+        if log.context.slot_status != "confirmed":
+            await asyncio.sleep(0.5)  # Wait for confirmation
+        
+        # Initiate fiat disbursement
+        try:
+            response = await self.disburse_fiat(
+                merchant_id=event["merchant_id"],
+                amount_idr=event["idr_amount"],
+            )
+            
+            if response["status"] == "COMPLETED":
+                # Release USDC from escrow to treasury
+                await self.release_to_treasury(event["nonce"])
+            else:
+                # Retry or refund
+                await self.handle_disbursement_failure(event)
+                
+        except Exception as e:
+            logger.error(f"Disbursement failed: {e}")
+            await self.initiate_refund(event)
+    
+    async def disburse_fiat(self, merchant_id: str, amount_idr: int):
+        """Call Xendit API to disburse IDR"""
+        # Map NMID to bank account (cached from merchant registry)
+        bank_info = await self.get_merchant_bank(merchant_id)
+        
+        payload = {
+            "external_id": f"arpay_{int(time.time())}",
+            "bank_code": bank_info["bank_code"],
+            "account_holder_name": bank_info["account_name"],
+            "account_number": bank_info["account_number"],
+            "description": "ArPay Settlement",
+            "amount": amount_idr,
+        }
+        
+        headers = {
+            "Authorization": f"Basic {self.xendit_api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.xendit.co/v2/disbursements",
+                json=payload,
+                headers=headers,
+            ) as response:
+                return await response.json()
+    
+    async def release_to_treasury(self, nonce: int):
+        """Submit release_escrow instruction to Solana"""
+        # Build transaction with program authority keypair
+        # ... (transaction construction omitted for brevity)
+        pass
+    
+    async def initiate_refund(self, event: dict):
+        """Refund USDC to payer after disbursement failure"""
+        # Wait for timeout window to elapse
+        # Anyone can call release_escrow with to_treasury=false after timeout
+        # No action needed - permissionless refund
+        logger.info(f"Timeout refund available for nonce {event['nonce']}")
+```
+
+### Event Parsing
+
+```python
+def parse_settlement_event(logs: List[str]) -> dict:
+    """Extract structured data from program logs"""
+    for log in logs:
+        if "SettlementRequested" in log:
+            # Anchor emits events as base64-encoded borsh data
+            # Format: "Program log: <base64>"
+            encoded = log.split("Program log: ")[1]
+            decoded = base64.b64decode(encoded)
+            
+            # Deserialize borsh-encoded event
+            event = borsh.deserialize(SettlementRequestedSchema, decoded)
+            
+            return {
+                "merchant_id": event.merchant_id,
+                "idr_amount": event.idr_amount,
+                "usdc_amount": event.usdc_amount,
+                "payer": str(event.payer),
+                "nonce": event.nonce,
+                "timestamp": event.timestamp,
+            }
+```
+
+### Retry Strategy
+
+```python
+async def disburse_with_retry(self, params: dict, max_retries=5):
+    """Exponential backoff retry for transient failures"""
+    for attempt in range(max_retries):
+        try:
+            response = await self.disburse_fiat(**params)
+            
+            if response["status"] in ["COMPLETED", "PENDING"]:
+                return response
+            elif response["status"] == "FAILED":
+                if is_permanent_failure(response["failure_code"]):
+                    raise PermanentFailure(response["failure_code"])
+                # Else retry
+                
+        except aiohttp.ClientError as e:
+            if attempt == max_retries - 1:
+                raise
+            
+        # Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        await asyncio.sleep(2 ** attempt)
+    
+    raise MaxRetriesExceeded()
+```
+
+### State Recovery
+
+```python
+async def recover_unprocessed_settlements(self):
+    """Reconstruct oracle state after crash/restart"""
+    # Query all active escrow PDAs
+    escrows = await self.solana_client.get_program_accounts(
+        self.program_id,
+        filters=[{"dataSize": ESCROW_ACCOUNT_SIZE}]
+    )
+    
+    for escrow in escrows:
+        data = parse_escrow_account(escrow.account.data)
+        
+        # Check if disbursement was already processed
+        if not await self.is_disbursed(data["merchant_id"], data["nonce"]):
+            # Re-process settlement
+            logger.info(f"Recovering settlement for nonce {data['nonce']}")
+            await self.handle_settlement_by_data(data)
+```
+
+## Data Flow Diagram
+
+```
+┌──────────┐
+│  User    │
+│  Scans   │
+│  QRIS    │
+└────┬─────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  PWA: Decode NMID, Amount (IDR)            │
+│  Fetch Rate: USDC/IDR from Pyth + API      │
+│  Calculate: USDC amount = IDR / rate       │
+│  Build: Solana Pay URI                     │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Wallet: User reviews & signs TX           │
+│  Submit: Transaction to Solana RPC         │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Solana: Execute initiate_settlement()     │
+│  - Transfer USDC to PDA                    │
+│  - Emit SettlementRequested event          │
+│  - Return success                          │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Oracle: Receive event via WebSocket       │
+│  - Parse merchant_id, idr_amount           │
+│  - Verify block confirmation               │
+│  - Lookup merchant bank details            │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Xendit: POST /v2/disbursements            │
+│  - Bank code, account number               │
+│  - Amount in IDR                           │
+│  - Webhook callback URL                    │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  BI-FAST: Route payment to merchant bank   │
+│  - Real-time gross settlement              │
+│  - Irrevocable credit                      │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Merchant Bank: Receive IDR                │
+│  - Instant notification                    │
+│  - Balance updated                         │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Oracle: Receive Xendit webhook            │
+│  - Status: COMPLETED                       │
+│  - Submit release_escrow(to_treasury=true) │
+└────┬───────────────────────────────────────┘
+     │
+     ▼
+┌────────────────────────────────────────────┐
+│  Solana: Release USDC from PDA to Treasury │
+│  - Settlement finalized                    │
+└────────────────────────────────────────────┘
+```
+
+## Trust Model
+
+### Assumptions
+
+| Party | Trust Required | Mitigation |
+|-------|----------------|------------|
+| **Solana Network** | Correct finality, no double-spend | Decentralized consensus, 1500+ validators |
+| **ArPay Program** | Correct escrow logic | Open-source, auditable, deployed at fixed ID |
+| **Oracle Bridge** | Honest event relay | On-chain auditability, timeout refunds |
+| **Payment Gateway** | Honest fiat disbursement | Licensed by OJK, regulated entity |
+| **Merchant** | (None) | Merchant trusts own bank relationship |
+| **Payer** | (None) | Self-custody wallet, verifiable TX |
+
+### Centralization Analysis
+
+**Centralized component:** Oracle Bridge (operated by ArPay entity)
+
+**Attack vectors:**
+1. **Censorship** — Oracle refuses to process settlements
+   - *Mitigation:* Timeout refund returns funds to payer after 120s
+2. **Front-running** — Oracle views TX mempool, extracts MEV
+   - *Mitigation:* No MEV opportunity (fixed rates, no arbitrage)
+3. **Selective relay** — Oracle processes some but not all events
+   - *Mitigation:* All events are on-chain, publicly auditable
+
+**Decentralization roadmap:**
+- Multi-operator oracle network with slashing
+- DAO governance for protocol parameters
+- Permissionless operator registration
+
+## Performance Optimization
+
+### RPC Provider Selection
+
+**Requirements:**
+- WebSocket event streaming with &lt;200ms latency
+- High reliability (99.9%+ uptime)
+- Solana Mainnet-Beta support
+
+**Recommended:**
+- Helius (dedicated RPC)
+- QuickNode (premium tier)
+- Triton (high-frequency trading grade)
+
+### Event Processing Parallelism
+
+```python
+# Process multiple settlements concurrently
+async def process_batch(events: List[Event]):
+    tasks = [handle_settlement(event) for event in events]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Settlement failed: {result}")
+```
+
+### Caching Strategy
+
+```python
+# Cache merchant bank details to reduce API calls
+from cachetools import TTLCache
+
+merchant_cache = TTLCache(maxsize=10000, ttl=3600)  # 1 hour TTL
+
+async def get_merchant_bank(merchant_id: str):
+    if merchant_id in merchant_cache:
+        return merchant_cache[merchant_id]
+    
+    # Fetch from database
+    bank_info = await db.query("SELECT * FROM merchants WHERE nmid = ?", merchant_id)
+    merchant_cache[merchant_id] = bank_info
+    
+    return bank_info
+```
+
+## Monitoring & Observability
+
+### Metrics
+
+- **Latency:** P50/P95/P99 for each pipeline stage
+- **Throughput:** Settlements per second
+- **Error rate:** Failed disbursements / total settlements
+- **Escrow balance:** Total USDC locked in PDAs
+- **Refund rate:** Timeouts / total settlements
+
+### Alerting
+
+```python
+# Critical alerts
+if disbursement_error_rate > 0.05:  # >5% failure
+    send_alert("High disbursement failure rate")
+
+if avg_latency > 10_000:  # >10s end-to-end
+    send_alert("Settlement latency degraded")
+
+if websocket_disconnected > 30:  # >30s offline
+    send_alert("Oracle offline - refunds at risk")
+```
+
+### Logging
+
+```python
+logger.info({
+    "event": "settlement_completed",
+    "merchant_id": merchant_id,
+    "usdc_amount": usdc_amount,
+    "idr_amount": idr_amount,
+    "latency_ms": end_time - start_time,
+    "tx_signature": tx_sig,
+})
+```
+
+---
+
+## Next Steps
+
+- **[Security Analysis →](/docs/security)** — Formal guarantees, attack vectors, mitigations
+- **[Smart Contract API →](/docs/smart-contract)** — Instruction reference, account schemas
+- **[Oracle Deployment →](/docs/oracle-setup)** — Run your own oracle bridge instance

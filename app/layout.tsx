@@ -1,20 +1,14 @@
-import './globals.css';
-import type { Metadata } from 'next';
+import "./globals.css";
 
-// Metadata ini menggantikan tag <Head> lama
-export const metadata: Metadata = {
-  title: 'ArPay | Peer-to-Fiat Settlement Protocol',
-  description: 'Decentralized commerce settlement protocol converting on-chain USDC to local fiat in seconds.',
-};
-
-export default function RootLayout({
+export default function GlobalRootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="scroll-smooth">
-      <body className="bg-[#0f172a] text-slate-50 antialiased">
+    <html lang="en">
+      {/* Warna background default ditaruh di sini */}
+      <body className="bg-[#050a0e] text-slate-300 antialiased min-h-screen">
         {children}
       </body>
     </html>
