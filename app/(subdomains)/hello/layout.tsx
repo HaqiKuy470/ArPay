@@ -1,21 +1,73 @@
-import type { Metadata } from 'next';
+import type { Metadata } from "next";
 
-// Metadata ini menggantikan tag <Head> lama
+// 1. METADATA (SEO & OpenGraph FOR ABOUT PAGE)
 export const metadata: Metadata = {
-  title: 'ArPay | Peer-to-Fiat Settlement Protocol',
-  description: 'Decentralized commerce settlement protocol converting on-chain USDC to local fiat in seconds.',
+  title: "About ArPay | The Missing Bridge for Decentralized Commerce",
+  description: "Learn about the ArPay Protocol. A trustless peer-to-fiat settlement solution converting on-chain USDC into local fiat currency via the QRIS network without intermediaries.",
+  keywords: [
+    "What is ArPay",
+    "About ArPay Protocol",
+    "Arshaka Team Solana",
+    "Solana QRIS Bridge",
+    "Decentralized Commerce",
+    "USDC to Fiat",
+    "Trustless Settlement"
+  ],
+  openGraph: {
+    title: "About ArPay | The Peer-to-Fiat Protocol",
+    description: "Discover the fastest peer-to-fiat settlement protocol bridging Solana and local payment networks.",
+    url: "https://hello.arpay.my.id", 
+    siteName: "ArPay About",
+    locale: "en_US", // Diubah menjadi US English
+    type: "profile",
+  },
 };
 
-export default function RootLayout({
+export default function AboutLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+
+  // 2. SCHEMA MARKUP (AEO & GEO FOR ABOUT PAGE)
+  // Feeding AI explicit data about "What is ArPay?" and "Who built it?"
+  const aboutSchema = {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "name": "About ArPay Protocol",
+    "url": "https://hello.arpay.my.id",
+    "description": "ArPay is a trustless settlement protocol that enables the conversion of on-chain USDC holdings into local fiat currency disbursements without requiring merchants to hold any cryptocurrency asset.",
+    "mainEntity": {
+      "@type": "SoftwareApplication",
+      "name": "ArPay Protocol",
+      "applicationCategory": "Decentralized Finance (DeFi)",
+      "operatingSystem": "Solana Blockchain",
+      "creator": {
+        "@type": "Organization",
+        "name": "Arshaka Team",
+        "email": "arshaka@zohomail.com",
+        "location": {
+          "@type": "Place",
+          "name": "Malang, Indonesia"
+        }
+      }
+    }
+  };
+
   return (
-    <div lang="en" className="scroll-smooth">
-      <div className="bg-[#0f172a] text-slate-50 antialiased">
+    <section className="about-subdomain-wrapper relative min-h-screen">
+      <head>
+        {/* Injecting the entity into search engines and AI bots */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutSchema) }}
+        />
+      </head>
+      
+      {/* About Page UI Content renders here */}
+      <main className="relative z-10">
         {children}
-      </div>
-    </div>
+      </main>
+    </section>
   );
 }
