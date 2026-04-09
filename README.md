@@ -115,4 +115,4 @@ sequenceDiagram
     Merchant-->>Tourist: Cashier confirms "Lunas"
 ```
 ---
-### Please read details in [Our Official Whitepaper (PDF)](hello/arpay.my.id/docs).
+### Please read details in [Our Official Whitepaper (PDF)](https://hello/arpay.my.id/docs).
