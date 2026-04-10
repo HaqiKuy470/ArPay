@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 
 // 1. UPGRADE METADATA (SEO & OpenGraph)
 export const metadata: Metadata = {
   title: {
     template: "%s | ArPay Docs",
     default: "ArPay Protocol Documentation | Developers & API",
+  },
+  icons: {
+    icon: "/logo.svg",
   },
   description: "Technical documentation, architecture, and API reference for the ArPay Peer-to-Fiat settlement protocol on Solana.",
   keywords: [
@@ -23,7 +27,7 @@ export const metadata: Metadata = {
     url: "https://docs.arpay.my.id",
     siteName: "ArPay Docs",
     locale: "en_US",
-    type: "website", // Ini adalah website dokumentasi
+    type: "website",
   },
 };
 
@@ -34,7 +38,6 @@ export default function DocsLayout({
 }) {
 
   // 2. SCHEMA MARKUP (AEO & GEO KHUSUS DOKUMENTASI TEKNIS)
-  // Ini memberi tahu AI bahwa seluruh subdomain ini adalah pusat edukasi/referensi teknis
   const docsSchema = {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -46,7 +49,6 @@ export default function DocsLayout({
       "@type": "Organization",
       "name": "Arshaka Team"
     },
-    // Jika nanti kamu punya fitur search di docs, ini schema-nya:
     "potentialAction": {
       "@type": "SearchAction",
       "target": "https://docs.arpay.my.id/search?q={search_term_string}",
@@ -55,20 +57,30 @@ export default function DocsLayout({
   };
 
   return (
-    <div className="selection:bg-green-500/30 selection:text-green-200 min-h-screen flex flex-col">
-      {/* 3. SUNTIKAN SCHEMA KE DALAM HEAD */}
-      <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(docsSchema) }}
-        />
-      </head>
+<div className="selection:bg-green-500/30 selection:text-green-200 min-h-screen flex flex-col">
+  {/* 3. SUNTIKAN SCHEMA LANGSUNG TANPA TAG <head> */}
+  <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{ __html: JSON.stringify(docsSchema) }}
+  />
 
       <nav className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#050a0e]/80 backdrop-blur-md">
         <div className="flex items-center px-6 py-4 max-w-7xl mx-auto">
-          <span className="font-mono text-xl font-bold text-white tracking-tighter">
-            ArPay<span className="text-green-400">Docs</span>
-          </span>
+          
+          {/* LOGO & TITLE */}
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image 
+              src="/logo.svg" 
+              alt="ArPay Logo"
+              width={32} 
+              height={32}
+              className="rounded-md"
+            />
+            <span className="font-mono text-xl font-bold text-white tracking-tighter">
+              ArPay<span className="text-green-400">Docs</span>
+            </span>
+          </Link>
+
           <div className="ml-auto flex gap-4 text-sm font-mono">
             <a href="https://arpay.my.id" className="hover:text-green-400 transition-colors">← Main App</a>
           </div>

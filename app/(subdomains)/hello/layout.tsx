@@ -4,6 +4,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "About ArPay | The Missing Bridge for Decentralized Commerce",
   description: "Learn about the ArPay Protocol. A trustless peer-to-fiat settlement solution converting on-chain USDC into local fiat currency via the QRIS network without intermediaries.",
+  // 👇 INI TAMBAHAN UNTUK LOGO DI BROWSER 👇
+  icons: {
+    icon: '/logo.svg', 
+  },
   keywords: [
     "What is ArPay",
     "About ArPay Protocol",
@@ -18,7 +22,7 @@ export const metadata: Metadata = {
     description: "Discover the fastest peer-to-fiat settlement protocol bridging Solana and local payment networks.",
     url: "https://hello.arpay.my.id", 
     siteName: "ArPay About",
-    locale: "en_US", // Diubah menjadi US English
+    locale: "en_US",
     type: "profile",
   },
 };
@@ -30,7 +34,6 @@ export default function AboutLayout({
 }) {
 
   // 2. SCHEMA MARKUP (AEO & GEO FOR ABOUT PAGE)
-  // Feeding AI explicit data about "What is ArPay?" and "Who built it?"
   const aboutSchema = {
     "@context": "https://schema.org",
     "@type": "AboutPage",
@@ -56,15 +59,15 @@ export default function AboutLayout({
 
   return (
     <section className="about-subdomain-wrapper relative min-h-screen">
-      <head>
-        {/* Injecting the entity into search engines and AI bots */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutSchema) }}
-        />
-      </head>
+      {/* Catatan: Saya tetap menghapus tag <head> di sini ya.
+        Karena kalau dibiarkan, cepat atau lambat Next.js akan memunculkan 
+        hydration error (layar merah) saat kamu build/deploy aplikasinya. 
+      */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutSchema) }}
+      />
       
-      {/* About Page UI Content renders here */}
       <main className="relative z-10">
         {children}
       </main>
