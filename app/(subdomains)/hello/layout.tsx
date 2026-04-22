@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 
 // 1. METADATA (SEO & OpenGraph FOR ABOUT PAGE)
 export const metadata: Metadata = {
-  title: "About ArPay | The Missing Bridge for Decentralized Commerce",
+  title: "About ArPay | The Missing Bridge for Green Incentives",
   description: "Learn about the ArPay Protocol. A trustless peer-to-fiat settlement solution converting on-chain USDC into local fiat currency via the QRIS network without intermediaries.",
-  // 👇 INI TAMBAHAN UNTUK LOGO DI BROWSER 👇
   icons: {
     icon: '/logo.svg', 
   },
@@ -13,10 +12,11 @@ export const metadata: Metadata = {
     "About ArPay Protocol",
     "Arshaka Team Solana",
     "Solana QRIS Bridge",
-    "Decentralized Commerce",
-    "USDC to Fiat",
-    "Trustless Settlement"
-  ],
+    "Green Reward Settlement",
+    "Trustless Settlement",
+    "DePIN Incentive Bridge",
+    "Eco-friendly Web3"
+  ],  
   openGraph: {
     title: "About ArPay | The Peer-to-Fiat Protocol",
     description: "Discover the fastest peer-to-fiat settlement protocol bridging Solana and local payment networks.",
@@ -39,11 +39,11 @@ export default function AboutLayout({
     "@type": "AboutPage",
     "name": "About ArPay Protocol",
     "url": "https://hello.arpay.my.id",
-    "description": "ArPay is a trustless settlement protocol that enables the conversion of on-chain USDC holdings into local fiat currency disbursements without requiring merchants to hold any cryptocurrency asset.",
+    "description": "A trustless settlement solution converting on-chain environmental rewards (USDC) into local fiat incentives via the QRIS network.",
     "mainEntity": {
       "@type": "SoftwareApplication",
       "name": "ArPay Protocol",
-      "applicationCategory": "Decentralized Finance (DeFi)",
+      "applicationCategory": "Sustainable Tech / Web3 Infrastructure",
       "operatingSystem": "Solana Blockchain",
       "creator": {
         "@type": "Organization",

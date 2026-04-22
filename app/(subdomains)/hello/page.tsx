@@ -7,28 +7,28 @@ const FONT = `@import url('https://fonts.googleapis.com/css2?family=Space+Mono:w
 
 interface Step { t: string; label: string; detail: string; }
 const steps: Step[] = [
-  { t: "T0", label: "Scan QRIS", detail: "PWA decodes NMID + IDR amount, fetches Pyth USDC/IDR rate" },
-  { t: "T1", label: "Sign TX", detail: "User signs Solana Pay transaction from self-custody wallet" },
-  { t: "T2", label: "PDA Escrow", detail: "USDC locked in Program Derived Address, SettlementRequested emitted" },
-  { t: "T3", label: "Oracle Detects", detail: "Python daemon receives WSS event, verifies block Confirmed" },
-  { t: "T4", label: "Disburse IDR", detail: "POST /v2/disbursements to Xendit, IDR routed via BI-FAST" },
-  { t: "T5", label: "Merchant Credited", detail: "Bank notification received — done. No crypto touched by merchant." },
+  { t: "T0", label: "Grant Trigger", detail: "System detects environmental action or DePIN sensor data, triggering reward distribution." },
+  { t: "T1", label: "Sign TX", detail: "Authorized distributor signs Solana transaction to initiate on-chain reward flow." },
+  { t: "T2", label: "Escrow Lock", detail: "USDC reward is locked in an on-chain escrow program, emitting a settlement event." },
+  { t: "T3", label: "Oracle Listen", detail: "Off-chain monitoring service captures confirmed finality of the environmental grant." },
+  { t: "T4", label: "Fiat Disbursement", detail: "IDR incentive is disbursed directly to the contributor's e-wallet via licensed fiat rails." },
+  { t: "T5", label: "Verified", detail: "Contributor receives real-world value. Assets remain a transparent on-chain flow for ESG reporting." },
 ];
 
 interface Stat { val: string; label: string; }
 const stats: Stat[] = [
   { val: "< 5s", label: "Settlement" },
-  { val: "30M+", label: "QRIS Terminals" },
-  { val: "0%", label: "Custody Risk" },
-  { val: "0.5%", label: "Slippage Guard" },
+  { val: "30M+", label: "QRIS Endpoints" },
+  { val: "Non-Custodial", label: "Asset Flow" },
+  { val: "Oracle-Based", label: "Distribution" },
 ];
 
 const stack: [string, string, string][] = [
-  ["On-Chain", "Rust + Anchor", "Solana PDA Escrow"],
-  ["Client", "Next.js PWA", "Solana Pay URI"],
-  ["Oracle", "Python asyncio", "WSS Event Listener"],
-  ["Fiat Rail", "Xendit + BI-FAST", "Licensed IDR Settlement"],
-  ["Price Feed", "Pyth Network", "On-chain USDC/IDR"],
+  ["On-Chain", "Rust + Anchor", "Solana escrow program for rewards"],
+  ["Client", "Next.js PWA", "Reward scanner + wallet integration"],
+  ["Oracle", "Python / Node", "Event-driven disbursement listener"],
+  ["Fiat Rail", "Xendit + BI-FAST", "Licensed payout infrastructure layer"],
+  ["Price Feed", "Pyth Network", "USDC/IDR reference for fair incentives"],
 ];
 
 export default function ArPayHackathon() {
@@ -45,7 +45,7 @@ export default function ArPayHackathon() {
     setTimeout(() => { setTxAnimating(false); setTxState(0); }, 5500);
   };
 
-  const txLabel = ["READY", "SIGNING...", "CONFIRMED ✓", "SETTLED — IDR SENT"][txState];
+  const txLabel = ["READY", "PROCESSING...", "REWARD LOCKED ✓", "IDR DISBURSED"][txState];
   const txColor = ["#4ade80", "#facc15", "#4ade80", "#4ade80"][txState];
 
   return (
@@ -70,19 +70,6 @@ export default function ArPayHackathon() {
           pointerEvents: "none",
         }} />
 
-        <div style={{
-          position: "fixed", top: -200, left: -200,
-          width: "100vw", maxWidth: 600, height: 600,
-          background: "radial-gradient(circle, rgba(120,80,255,0.12) 0%, transparent 70%)",
-          pointerEvents: "none", zIndex: 0,
-        }} />
-        <div style={{
-          position: "fixed", bottom: -200, right: -200,
-          width: "100vw", maxWidth: 600, height: 600,
-          background: "radial-gradient(circle, rgba(0,220,130,0.10) 0%, transparent 70%)",
-          pointerEvents: "none", zIndex: 0,
-        }} />
-
         <nav style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
           borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -104,7 +91,7 @@ export default function ArPayHackathon() {
               background: "rgba(74,222,128,0.1)",
               border: "1px solid rgba(74,222,128,0.3)",
               padding: "2px 8px", borderRadius: 4,
-            }}>SOLANA 2026</span>
+            }}>ECO-SOLANA 2026</span>
           </div>
           <motion.a 
             href="https://arpay.my.id" 
@@ -118,7 +105,7 @@ export default function ArPayHackathon() {
               textDecoration: "none", fontWeight: 700,
             }}
           >
-            Go to APP →
+            Launch App →
           </motion.a>
         </nav>
 
@@ -143,7 +130,7 @@ export default function ArPayHackathon() {
                   flexWrap: "wrap",
                 }}>
                   <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#4ade80", animation: "pulse 2s infinite" }} />
-                  SOLANA SMART PAYMENT
+                  GREEN INCENTIVE DISTRIBUTION PROTOCOL
                 </div>
 
                 <h1 style={{
@@ -155,21 +142,20 @@ export default function ArPayHackathon() {
                   margin: "0 0 24px",
                   letterSpacing: "-1px",
                 }}>
-                  Pay Any<br />
+                  Eco-Rewards<br />
                   <span style={{
                     WebkitTextStroke: "1.5px #4ade80",
                     color: "transparent",
-                  }}>QRIS Merchant</span><br />
-                  With USDC.
+                  }}>Distributed</span><br />
+                  via USDC Rails.
                 </h1>
 
                 <p style={{
                   fontSize: "clamp(16px, 2vw, 18px)", color: "#7a8f9e",
                   maxWidth: 520, lineHeight: 1.6, marginBottom: 36,
                 }}>
-                  A trustless settlement protocol bridging Solana on-chain programmability
-                  to Indonesia&apos;s 30M+ QRIS merchant network. Merchants receive IDR.
-                  Users stay self-custodial.
+                 ArPay is a settlement infrastructure layer connecting Solana-based environmental incentives
+with local economies via licensed fiat rails. Empowering sustainable actions through seamless real-world rewards.
                 </p>
 
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -185,7 +171,7 @@ export default function ArPayHackathon() {
                       textDecoration: "none", display: "inline-block"
                     }}
                   >
-                    Read Whitepaper
+                    Technical Docs
                   </motion.a>
                   
                   <motion.button 
@@ -202,7 +188,7 @@ export default function ArPayHackathon() {
                       fontSize: 13, cursor: "pointer",
                     }}
                   >
-                    {txAnimating ? "Running..." : "▶ Simulate TX"}
+                    {txAnimating ? "Running..." : "▶ Simulate Grant"}
                   </motion.button>
                 </div>
 
@@ -221,12 +207,12 @@ export default function ArPayHackathon() {
                     {["#ff5f57","#febc2e","#28c840"].map((c, i) => (
                       <div key={i} style={{ width: 12, height: 12, borderRadius: "50%", background: c }} />
                     ))}
-                    <span style={{ color: "#4a5568", marginLeft: 8, fontSize: 11 }}>arpay_settlement.log</span>
+                    <span style={{ color: "#4a5568", marginLeft: 8, fontSize: 11 }}>arpay_incentive.log</span>
                   </div>
-                  <div style={{ color: "#4a5568", marginBottom: 8 }}>$ arpay simulate --amount 12.5 USDC --merchant &quot;Geprek Legend&quot;</div>
-                  <div style={{ color: "#c9d4dc" }}>Send: <span style={{ color: "#818cf8" }}>12.500000 USDC</span></div>
+                  <div style={{ color: "#4a5568", marginBottom: 8 }}>$ arpay distribute --reward 12.5 USDC --receiver &quot;EcoHub_Malang&quot;</div>
+                  <div style={{ color: "#c9d4dc" }}>Grant: <span style={{ color: "#818cf8" }}>12.500000 USDC</span></div>
                   <div style={{ color: "#c9d4dc" }}>Rate: <span style={{ color: "#818cf8" }}>1 USDC = Rp 15,840</span></div>
-                  <div style={{ color: "#c9d4dc" }}>Receive: <span style={{ color: "#4ade80" }}>Rp 198,000</span></div>
+                  <div style={{ color: "#c9d4dc" }}>Incentive: <span style={{ color: "#4ade80" }}>Rp 198,000</span></div>
                   <div style={{ color: "#c9d4dc" }}>Escrow PDA: <span style={{ color: "#facc15" }}>8f3a...92ab</span></div>
                   <div style={{
                     marginTop: 12, paddingTop: 12,
@@ -241,7 +227,6 @@ export default function ArPayHackathon() {
               </div>
 
               <div className="hide-on-mobile" style={{ flex: "1 1 400px", display: "flex", justifyContent: "center", position: "relative" }}>
-
                 <div style={{ 
                   width: "100%", 
                   maxWidth: "500px",
@@ -259,24 +244,12 @@ export default function ArPayHackathon() {
                   textAlign: "center",
                   padding: "20px"
                 }}>
-                  <span style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.8 }}>📸</span>
-                  <span style={{ fontFamily: "'Space Mono', monospace", fontSize: "14px", color: "#4ade80", fontWeight: 700 }}>MOCKUP AREA</span>
+                  <span style={{ fontSize: "48px", marginBottom: "16px", opacity: 0.8 }}>🌿</span>
+                  <span style={{ fontFamily: "'Space Mono', monospace", fontSize: "14px", color: "#4ade80", fontWeight: 700 }}>ECO-DEMO AREA</span>
                   <span style={{ fontSize: "12px", color: "#7a8f9e", marginTop: "12px", lineHeight: 1.5 }}>
-                    Letakkan tag &lt;img&gt; mockup UI<br/> atau &lt;video&gt; demo ArPay di sini.
+                    Showcase sustainable impact<br/> or DePIN sensor visualization here.
                   </span>
                 </div>
-
-                <div style={{
-                  position: "absolute",
-                  top: "50%", left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "80%", height: "80%",
-                  background: "radial-gradient(circle, rgba(74,222,128,0.15) 0%, transparent 60%)",
-                  filter: "blur(40px)",
-                  zIndex: -1,
-                  pointerEvents: "none"
-                }} />
-
               </div>
 
             </div>
@@ -312,13 +285,13 @@ export default function ArPayHackathon() {
               fontFamily: "'Space Mono', monospace",
               fontSize: 11, color: "#4ade80",
               letterSpacing: "0.15em", marginBottom: 16,
-            }}>TRANSACTION LIFECYCLE</div>
+            }}>REWARD LIFECYCLE</div>
             <h2 style={{
               fontFamily: "'Outfit', sans-serif",
               fontWeight: 800, fontSize: "clamp(28px, 4vw, 48px)",
               color: "#fff", margin: "0 0 48px", letterSpacing: "-1px",
               lineHeight: 1.2,
-            }}>T0 → T5 in Under 5 Seconds</h2>
+            }}>T0 → T5: Instant Gratification</h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {steps.map((s, i) => (
@@ -366,12 +339,6 @@ export default function ArPayHackathon() {
                 </motion.div>
               ))}
             </div>
-            <div style={{
-              fontFamily: "'Space Mono', monospace",
-              fontSize: 11, color: "#4a5568", marginTop: 16,
-            }}>
-              ↑ tap each step to expand
-            </div>
           </div>
           </section>
 
@@ -391,7 +358,7 @@ export default function ArPayHackathon() {
                 fontWeight: 800, fontSize: "clamp(28px, 4vw, 48px)",
                 color: "#fff", margin: "0 0 48px", letterSpacing: "-1px",
                 lineHeight: 1.2,
-              }}>Built on Solana. Settled in Rupiah.</h2>
+              }}>Verified Sustainability Settlement.</h2>
 
               <div style={{
                 display: "grid",
@@ -419,25 +386,6 @@ export default function ArPayHackathon() {
                   </div>
                 ))}
               </div>
-
-              <div style={{
-                marginTop: 40,
-                padding: "24px clamp(16px, 4vw, 28px)",
-                background: "rgba(74,222,128,0.05)",
-                border: "1px solid rgba(74,222,128,0.15)",
-                borderRadius: 12,
-                fontFamily: "'Space Mono', monospace",
-                fontSize: "clamp(11px, 2vw, 13px)",
-                color: "#7a8f9e",
-                lineHeight: 1.6,
-              }}>
-                <span style={{ color: "#4ade80", fontWeight: 700 }}>Atomic Settlement Guarantee: </span>
-                P(merchant receives IDR ∪ payer gets USDC refund | TX confirmed) = 1
-                <br />
-                <span style={{ fontSize: 11, color: "#4a5568", marginTop: 8, display: "block" }}>
-                  No intermediate state exists where funds are permanently lost. Escrow timeout: 120s.
-                </span>
-              </div>
             </div>
           </section>
 
@@ -447,13 +395,13 @@ export default function ArPayHackathon() {
               fontFamily: "'Space Mono', monospace",
               fontSize: 11, color: "#4ade80",
               letterSpacing: "0.15em", marginBottom: 16,
-            }}>TARGET USERS</div>
+            }}>TARGET ECOSYSTEMS</div>
             <h2 style={{
               fontFamily: "'Outfit', sans-serif",
               fontWeight: 800, fontSize: "clamp(28px, 4vw, 48px)",
               color: "#fff", margin: "0 0 48px", letterSpacing: "-1px",
               lineHeight: 1.2,
-            }}>Who This Is For</h2>
+            }}>Scaling Impact</h2>
 
             <div style={{
               display: "grid",
@@ -461,9 +409,9 @@ export default function ArPayHackathon() {
               gap: 20,
             }}>
               {[
-                ["Crypto Holders", "Spend USDC at any of 30M Indonesian QRIS merchants — no exchange, no offramp delay."],
-                ["Tourists & Expats", "Skip currency exchange booths entirely. Pay anywhere that accepts QRIS."],
-                ["Remote Freelancers", "Convert on-chain earnings to real-world spending power instantly."],
+                ["Green Initiatives", "Enable instant distribution of environmental rewards via QRIS infrastructure for local communities."],
+                ["DePIN Networks", "Bridge physical environmental sensors (solar/waste) with seamless local fiat incentives."],
+                ["Sustainability NGOs", "Distribute volunteer grants and operational funds transparently using blockchain settlement."],
               ].map(([title, desc], i) => (
                 <div key={i} style={{
                   padding: "28px",
@@ -492,11 +440,6 @@ export default function ArPayHackathon() {
             textAlign: "center",
             borderTop: "1px solid rgba(255,255,255,0.06)",
           }}>
-            <div style={{
-              fontFamily: "'Space Mono', monospace",
-              fontSize: 11, color: "#4ade80",
-              letterSpacing: "0.15em", marginBottom: 20,
-            }}>BUILT FOR THE FUTURE ECONOMY</div>
             <h2 style={{
               fontFamily: "'Outfit', sans-serif",
               fontWeight: 800,
@@ -504,9 +447,9 @@ export default function ArPayHackathon() {
               color: "#fff",
               lineHeight: 1.2,
               margin: "0 0 12px", letterSpacing: "-1.5px",
-            }}>The Missing Bridge.</h2>
+            }}>The Incentive Bridge.</h2>
             <p style={{ color: "#4a5568", fontSize: "clamp(14px, 2vw, 16px)", marginBottom: 36 }}>
-              Solana-native. Fiat-settled. No merchant onboarding.
+              On-chain transparency. Real-world rewards.
             </p>
             <motion.a 
               href="https://arpay.my.id" 
@@ -521,7 +464,7 @@ export default function ArPayHackathon() {
                 textDecoration: "none",
               }}
             >
-              Try ArPay → 
+              Explore Protocol → 
             </motion.a>
           </section>
 
@@ -534,26 +477,17 @@ export default function ArPayHackathon() {
             <span style={{
               fontFamily: "'Space Mono', monospace",
               fontSize: 12, color: "#4a5568",
-            }}>© {new Date().getFullYear()} ArPay · Arshaka Team · Malang, Indonesia</span>
-            <a href="#" style={{
+            }}>© {new Date().getFullYear()} ArPay Protocol · Green Incentive Settlement Demo (Non-Custodial)</span>
+            <a href="https://arpay.my.id" style={{
               fontFamily: "'Space Mono', monospace",
               fontSize: 12, color: "#4ade80", textDecoration: "none",
-            }}>arpay 2026</a>
+            }}>arpay.id</a>
           </footer>
         </div>
 
         <style>{`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-          }
-          
-          /* Menyembunyikan elemen mockup area khusus di HP */
-          @media (max-width: 768px) {
-            .hide-on-mobile {
-              display: none !important;
-            }
-          }
+          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+          @media (max-width: 768px) { .hide-on-mobile { display: none !important; } }
         `}</style>
       </div>
     </>
