@@ -17,7 +17,7 @@ Complete documentation for the ArPay Solana program deployed on Solana Mainnet-B
 The ArPay program implements a trustless escrow mechanism for crypto-to-fiat settlements using Program Derived Addresses (PDAs) as atomic fund locks.
 
 **Core functionality:**
-1. Accept USDC from payers into PDA escrow
+1. Accept USDC from sponsors into PDA escrow
 2. Emit events for off-chain oracle processing
 3. Release USDC to treasury upon confirmed fiat disbursement
 4. Enable automatic refunds after timeout
@@ -135,7 +135,7 @@ pub fn initiate_settlement(
 
 | Name | Type | Description |
 |------|------|-------------|
-| `merchant_id` | `String` | National Merchant ID (NMID) from QRIS payload (max 25 chars) |
+| `merchant_id` | `String` | National Receiver ID (NMID) from QRIS payload (max 25 chars) |
 | `idr_amount` | `u64` | Amount in IDR cents (e.g., 10,000,000 = Rp 100,000) |
 | `usdc_amount` | `u64` | Amount in USDC base units (6 decimals, e.g., 6,850,000 = 6.85 USDC) |
 | `nonce` | `u64` | Unique nonce for PDA derivation (prevents replay) |
@@ -144,7 +144,7 @@ pub fn initiate_settlement(
 
 | Account | Mutable | Signer | Description |
 |---------|---------|--------|-------------|
-| `payer` | ❌ | ✅ | User submitting transaction |
+| `payer` | ❌ | ✅ | Sponsor submitting transaction |
 | `payer_token_account` | ✅ | ❌ | User's USDC token account |
 | `escrow_account` | ✅ | ❌ | Escrow PDA (seeds: `["escrow", payer, merchant_id, nonce]`) |
 | `escrow_token_account` | ✅ | ❌ | Escrow's USDC token account |
@@ -162,7 +162,7 @@ pub struct SettlementRequested {
     pub merchant_id: String,    // NMID from parameters
     pub idr_amount: u64,        // IDR in cents
     pub usdc_amount: u64,       // USDC in base units (6 decimals)
-    pub payer: Pubkey,          // Payer's public key
+    pub payer: Pubkey,          // Sponsor's public key (64 bytes)
     pub nonce: u64,             // Nonce for PDA uniqueness
     pub timestamp: i64,         // Unix timestamp
 }
@@ -206,10 +206,10 @@ const tx = await program.methods
 **Validation:**
 
 <div className="grid grid-cols-1 gap-1 my-3">
-  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Merchant ID length ≤ 25 characters</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Receiver ID length ≤ 25 characters</div>
   <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> USDC amount &gt; 0</div>
   <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> IDR amount &gt; 0</div>
-  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Payer token account has sufficient USDC balance</div>
+  <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Sponsor token account has sufficient USDC balance</div>
   <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Rate slippage within tolerance (checked against Pyth price)</div>
   <div className="flex items-center gap-2 text-sm text-slate-400"><span className="text-green-400">✅</span> Escrow PDA not already initialized (nonce uniqueness)</div>
 </div>
@@ -219,7 +219,7 @@ const tx = await program.methods
 <div className="flex flex-col gap-2 my-3">
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">InvalidMerchantId</code>
-    <span className="text-slate-400">Merchant ID empty or too long</span>
+    <span className="text-slate-400">Receiver ID empty or too long</span>
   </div>
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">InvalidAmount</code>
@@ -227,7 +227,7 @@ const tx = await program.methods
   </div>
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">InsufficientFunds</code>
-    <span className="text-slate-400">Payer token account balance too low</span>
+    <span className="text-slate-400">Sponsor token account balance too low</span>
   </div>
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">SlippageExceeded</code>
@@ -244,7 +244,7 @@ const tx = await program.methods
 ### `release_escrow`
 
 <div className="bg-white/5 border border-white/10 rounded-lg p-4 my-4 text-sm text-slate-400">
-  Releases USDC from escrow PDA either to the protocol treasury (upon successful fiat disbursement) or back to the payer (upon disbursement failure or timeout).
+  Releases USDC from escrow PDA either to the protocol treasury (upon successful fiat disbursement) or back to the sponsor (upon disbursement failure or timeout).
 </div>
 
 **Signature:**
@@ -269,7 +269,7 @@ pub fn release_escrow(
 | `escrow_account` | ✅ | ❌ | Escrow PDA holding funds |
 | `escrow_token_account` | ✅ | ❌ | Escrow's USDC token account |
 | `treasury_token_account` | ✅ | ❌ | Protocol treasury USDC account (if `to_treasury=true`) |
-| `payer_token_account` | ✅ | ❌ | Original payer's USDC account (if `to_treasury=false`) |
+| `payer_token_account` | ✅ | ❌ | Original sponsor's USDC account (if `to_treasury=false`) |
 | `config` | ❌ | ❌ | Program configuration PDA |
 | `token_program` | ❌ | ❌ | SPL Token Program |
 | `clock` | ❌ | ❌ | Solana Clock Sysvar |
@@ -317,7 +317,7 @@ const tx = await program.methods
 
   </div>
   <div className="border border-white/10 rounded-lg p-4 bg-white/5">
-    <div className="text-xs font-mono text-yellow-400 font-bold mb-3 uppercase tracking-wider">Payer Refund</div>
+    <div className="text-xs font-mono text-yellow-400 font-bold mb-3 uppercase tracking-wider">Sponsor Refund</div>
     <div className="text-xs text-slate-400 mb-3">Called by anyone after 120s timeout — no signature required</div>
 
 ```typescript
@@ -348,7 +348,7 @@ const tx = await program.methods
   </div>
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">TimeoutNotReached</code>
-    <span className="text-slate-400">Current time is less than escrow creation time + timeout (if `to_treasury=false`)</span>
+    <span className="text-slate-400">Current time is less than escrow creation time + timeout (if `to_treasury=false`, sponsor refund only)</span>
   </div>
   <div className="flex items-start gap-3 text-sm">
     <code className="text-red-400 shrink-0">EscrowAlreadyReleased</code>
@@ -406,8 +406,8 @@ pub struct Escrow {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `payer` | `Pubkey` | Original payer's public key (for refund routing) |
-| `merchant_id` | `String` | National Merchant ID (NMID) from QRIS |
+| `payer` | `Pubkey` | Original sponsor's public key (for refund routing) |
+| `receiver_id` | `String` | National Receiver ID (NMID) from QRIS |
 | `idr_amount` | `u64` | IDR amount in cents (e.g., 10,000,000 = Rp 100,000) |
 | `usdc_amount` | `u64` | USDC amount in base units (6 decimals) |
 | `nonce` | `u64` | Unique nonce for PDA derivation |
@@ -428,7 +428,7 @@ pub struct SettlementRequested {
     pub merchant_id: String,
     pub idr_amount: u64,
     pub usdc_amount: u64,
-    pub payer: Pubkey,
+    pub payer: Pubkey,          // Sponsor's pubkey
     pub nonce: u64,
     pub timestamp: i64,
 }
@@ -443,7 +443,7 @@ pub struct SettlementRequested {
     "merchant_id": "ID1234567890123",
     "idr_amount": 10000000,
     "usdc_amount": 6850000,
-    "payer": "7xJ9...kL2p",
+    "sponsor": "7xJ9...kL2p",
     "nonce": 1706889600000,
     "timestamp": 1706889600
   }
@@ -472,13 +472,13 @@ async def listen_events():
 |------|------|-------------|
 | `6000` | `ConfigAlreadyInitialized` | Program configuration already initialized |
 | `6001` | `InvalidAuthority` | Authority public key is invalid |
-| `6002` | `InvalidMerchantId` | Merchant ID is empty or exceeds 25 characters |
+| `6002` | `InvalidMerchantId` | Receiver ID is empty or exceeds 25 characters |
 | `6003` | `InvalidAmount` | USDC or IDR amount is zero |
-| `6004` | `InsufficientFunds` | Payer token account has insufficient USDC balance |
+| `6004` | `InsufficientFunds` | Sponsor token account has insufficient USDC balance |
 | `6005` | `SlippageExceeded` | Exchange rate slippage exceeds configured tolerance |
 | `6006` | `AccountAlreadyInitialized` | Escrow PDA already exists (nonce collision) |
 | `6007` | `UnauthorizedRelease` | Caller not authorized to release escrow to treasury |
-| `6008` | `TimeoutNotReached` | Timeout period not elapsed for permissionless refund |
+| `6008` | `TimeoutNotReached` | Timeout period not elapsed for sponsor refund |
 | `6009` | `EscrowAlreadyReleased` | Escrow account already closed |
 | `6010` | `InvalidPythPrice` | Pyth price feed data is stale or invalid |
 | `6011` | `ArithmeticOverflow` | Arithmetic operation overflowed |
@@ -534,7 +534,7 @@ const [configPda, configBump] = PublicKey.findProgramAddressSync(
 const [escrowPda, escrowBump] = PublicKey.findProgramAddressSync(
   [
     Buffer.from("escrow"),
-    payerPublicKey.toBuffer(),
+    sponsorPublicKey.toBuffer(),
     Buffer.from(merchantId),
     new anchor.BN(nonce).toArrayLike(Buffer, "le", 8),
   ],

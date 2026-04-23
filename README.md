@@ -23,7 +23,7 @@ The core logic resides in a custom Solana Program written in Rust/C++ using the 
 The off-chain infrastructure handles the critical leap from Web3 to the legacy banking system.
 * **WSS Listener:** A lightweight Python daemon maintains a persistent WebSocket connection to a Solana RPC node (e.g., Helius or QuickNode).
 * **Grant Verification:** The listener filters for transactions interacting with the ArPay Program ID. Once a `Confirmed` or `Finalized` block status is achieved, it extracts the event data.
-* **Fiat API Gateway:** The Python backend immediately fires an authenticated POST request to a licensed local Payment Gateway (e.g., Xendit) to disburse the exact IDR reward to the local community's bank account.
+* **Fiat API Gateway:** The Python backend immediately fires an authenticated POST request to a licensed local Fiat Disbursement API (e.g., Xendit) to disburse the exact IDR reward to the local community's bank account.
 
 ---
 

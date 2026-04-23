@@ -19,15 +19,15 @@ ArPay is designed to satisfy the following security properties:
 
 ### 2. Atomic Settlement Guarantee
 
-**Property:** Every settlement either completes fully (merchant receives fiat) or fails safely (user receives full refund). No intermediate state exists where funds are lost.
+**Property:** Every settlement either completes fully (community receives fiat) or fails safely (user receives full refund). No intermediate state exists where funds are lost.
 
 **Formal Statement:**
 
 ```
 ∀ transaction T confirmed on-chain at slot s:
   Let W = timeout window (120 seconds)
-  Let F = event "merchant receives IDR"
-  Let R = event "payer receives USDC refund"
+  Let F = event "community receives IDR"
+  Let R = event "sponsor receives USDC refund"
   
   Guarantee:
     P(F ∪ R | T confirmed) = 1    (exactly one outcome occurs)
@@ -38,11 +38,11 @@ ArPay is designed to satisfy the following security properties:
 - Smart contract locks USDC in PDA upon transaction confirmation
 - Oracle bridge either triggers fiat disbursement OR does nothing
 - After timeout T_max (120s), permissionless refund becomes available
-- Only two exit paths from PDA: (a) release to treasury, (b) refund to payer
+- Only two exit paths from PDA: (a) release to treasury, (b) refund to sponsor
 
 ### 3. Cryptographic Commitment
 
-**Property:** Once a transaction is confirmed on Solana, the commitment cannot be revoked without either satisfying the merchant or refunding the payer.
+**Property:** Once a transaction is confirmed on Solana, the commitment cannot be revoked without either satisfying the receiving community or refunding the sponsor.
 
 **Mechanism:**
 - Solana provides probabilistic finality within 400-800ms
@@ -84,7 +84,7 @@ fn validate_rate(
 | **Solana Validators** | Honest majority (&gt;66%) | Network-wide double-spend |
 | **ArPay Smart Contract** | Correct implementation | Fund loss, incorrect escrow logic |
 | **Oracle Bridge** | Honest event relay | Censorship, selective processing |
-| **Payment Gateway (Xendit)** | Honest fiat disbursement | Merchant doesn't receive IDR |
+| **Fiat Disbursement API (Xendit)** | Honest fiat disbursement | Community doesn't receive IDR |
 | **Pyth Oracle** | Accurate price feeds | Incorrect rate calculations |
 | **User Wallet** | User controls private key | User-side loss (not protocol fault) |
 
@@ -102,7 +102,7 @@ fn validate_rate(
 - Only the ArPay program can sign on behalf of PDA
 - Program restricts `release_escrow` to:
   - Authority keypair (for settlement completion)
-  - Anyone after timeout (for refunds only back to original payer)
+  - Anyone after timeout (for refunds only back to original sponsor)
 
 **Code Reference:**
 ```rust
@@ -141,7 +141,7 @@ pub fn release_escrow(ctx: Context<ReleaseEscrow>, to_treasury: bool) -> Result<
 
 **Attack:** Steal the authority private key and drain all active escrows to treasury.
 
-**Impact:** High (could release funds before merchant payment confirmed)
+**Impact:** High (could release funds before community settlement confirmed)
 
 **Mitigations:**
 1. **Hardware security module (HSM)** for authority key storage
@@ -191,17 +191,17 @@ Slippage = |20,000 - 15,000| / 15,000 = 33%
 **Impact:** Low (user receives automatic refund)
 
 **Mitigation:**
-- **Timeout refund:** After 120 seconds, anyone can call `release_escrow` to refund payer
+- **Timeout refund:** After 120 seconds, anyone can call `release_escrow` to refund sponsor
 - **Permissionless refund:** No oracle cooperation needed
 - **Public auditability:** All unprocessed settlements are visible on-chain
 
 **Attack Scenario:**
 ```
-Oracle censors settlement for merchant M
+Oracle censors settlement for community hub C
 User's USDC locked in PDA
 After 120s timeout:
 → User (or anyone) calls release_escrow(to_treasury=false)
-→ USDC refunded to user's token account
+→ USDC refunded to sponsor's token account
 ```
 
 **Result:** ✅ **Censorship-resistant via timeout mechanism**.
@@ -214,7 +214,7 @@ After 120s timeout:
 
 **Reason:**
 - ArPay transactions use fixed rates encoded in instruction data
-- No arbitrage opportunity (USDC → IDR is one-way, merchant-specific)
+- No arbitrage opportunity (USDC → IDR is one-way, community-specific)
 - Oracle has no incentive to front-run (doesn't profit from settlement order)
 
 **Result:** ✅ **No MEV attack surface**.
@@ -293,7 +293,7 @@ pub struct InitiateSettlement<'info> {
 ```
 User signs TX with nonce=12345
 Attacker replays TX
-Solana tries to create PDA with seeds [payer, merchant, 12345]
+Solana tries to create PDA with seeds [payer, receiver, 12345]
 → PDA already exists
 → Transaction FAILS
 ```
@@ -302,17 +302,17 @@ Solana tries to create PDA with seeds [payer, merchant, 12345]
 
 ---
 
-### 4. Payment Gateway Risks
+### 4. Fiat Disbursement API Risks
 
 ### 4.1 Disbursement Failure
 
-**Attack/Failure:** Xendit fails to disburse IDR to merchant after USDC is locked.
+**Attack/Failure:** Xendit fails to disburse IDR to community after USDC is locked.
 
 **Impact:** Medium (user funds locked temporarily)
 
 **Mitigation:**
 1. **Automatic retry:** Oracle retries disbursement up to 5 times with exponential backoff
-2. **Timeout refund:** If all retries fail, escrow times out and user receives refund
+2. **Timeout refund:** If all retries fail, escrow times out and sponsor receives refund
 3. **Manual intervention:** Support team can trigger manual disbursement or refund
 4. **Insurance fund:** Covers losses from permanent gateway failures
 
@@ -328,23 +328,23 @@ Total time elapsed: ~31s
 
 If still failing:
 → Oracle does NOT call release_escrow
-→ After 120s total timeout, user receives automatic refund
+→ After 120s total timeout, sponsor receives automatic refund
 ```
 
 **Result:** ⚠️ **User inconvenience but no fund loss**.
 
-### 4.2 Merchant Bank Account Invalid
+### 4.2 Community Bank Account Invalid
 
-**Attack:** Malicious merchant provides invalid bank details to trap funds.
+**Attack:** Malicious community hub provides invalid bank details to trap funds.
 
 **Impact:** Low (funds refunded to user)
 
 **Mitigation:**
-- **Merchant verification:** NMID mapped to verified bank account in database
+- **Community verification:** NMID mapped to verified bank account in database
 - **Xendit validation:** Gateway validates bank account before disbursement
-- **Failed disbursement → refund:** If bank details invalid, oracle refunds user
+- **Failed disbursement → refund:** If bank details invalid, oracle refunds sponsor
 
-**Result:** ✅ **Merchant cannot trap funds with invalid details**.
+**Result:** ✅ **Community cannot trap funds with invalid details**.
 
 ---
 
@@ -368,12 +368,12 @@ If still failing:
 
 **Attack:** Network congestion prevents transaction confirmation within timeout window.
 
-**Impact:** Low (transaction fails, user retries)
+**Impact:** Low (transaction fails, sponsor retries)
 
 **Mitigation:**
 - **Priority fees:** PWA can increase priority fee during congestion
 - **Extended timeout:** Timeout window (120s) is generous even under congestion
-- **User notification:** PWA displays "Network congested, please wait or retry"
+- **User notification:** PWA displays "Network congested, please wait or retry" (for sponsor)
 
 **Result:** ✅ **User experience degradation but no fund loss**.
 
@@ -381,25 +381,25 @@ If still failing:
 
 ### 6. Regulatory & Compliance
 
-### 6.1 Merchant Regulatory Exposure
+### 6.1 Community Regulatory Exposure
 
-**Risk:** Merchants classified as Virtual Asset Service Providers (VASPs) under OJK/BI regulation.
+**Risk:** communities classified as Virtual Asset Service Providers (VASPs) under OJK/BI regulation.
 
 **Mitigation:**
-- **Isolation by design:** Merchants receive only IDR via licensed payment gateway
-- **No on-chain presence:** Merchants have no Solana wallet or crypto interaction
-- **Payment gateway as shield:** Xendit is the regulated entity handling crypto conversion
-- **Legal opinion:** Obtained from Indonesian fintech law firm confirming merchant exemption
+- **Isolation by design:** communities receive only IDR via licensed Fiat Disbursement API
+- **No on-chain presence:** communities have no Solana wallet or crypto interaction
+- **Fiat Disbursement API as shield:** Xendit is the regulated entity handling crypto conversion
+- **Legal opinion:** Obtained from Indonesian fintech law firm confirming community hub exemption
 
-**Result:** ✅ **Merchants are NOT considered VASPs** under current regulation.
+**Result:** ✅ **communities are NOT considered VASPs** under current regulation.
 
 ### 6.2 AML/KYC Requirements
 
 **Risk:** ArPay facilitates anonymous crypto-to-fiat conversion.
 
 **Mitigation:**
-- **Merchant KYC:** All merchants are QRIS-registered (BI-verified identities)
-- **Transaction limits:** Enforce daily/monthly limits per merchant
+- **Community KYC:** All communities are QRIS-registered (BI-verified identities)
+- **Transaction limits:** Enforce daily/monthly limits per community hub
 - **Suspicious activity monitoring:** Flag unusual patterns (velocity, amount spikes)
 - **Xendit compliance:** Gateway already handles AML screening per OJK requirements
 
@@ -526,7 +526,7 @@ ArPay's security architecture is built on multiple layers of defense:
 1. **Cryptographic guarantees** (Solana consensus, PDA escrow)
 2. **Economic incentives** (timeout refunds, slippage protection)
 3. **Operational security** (HSM, monitoring, redundancy)
-4. **Regulatory compliance** (merchant isolation, AML/KYC)
+4. **Regulatory compliance** (community isolation, AML/KYC)
 
 The protocol's **atomic settlement guarantee** ensures that users can never lose funds to a failed settlement. The **centralized oracle bridge** is the primary trust assumption, mitigated by:
 - Timeout refunds (permissionless exit)

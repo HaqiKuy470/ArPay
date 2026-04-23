@@ -11,15 +11,15 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.svg",
   },
-  description: "Technical documentation, architecture, and API reference for the ArPay Peer-to-Fiat settlement protocol on Solana.",
+description: "Technical documentation, architecture, and API reference for the ArPay Eco-Incentive settlement protocol on Solana.",
   keywords: [
     "ArPay Docs", 
     "ArPay API", 
     "Solana Anchor Integration", 
-    "USDC Settlement API", 
-    "QRIS Peer-to-Fiat", 
+    "USDC Green Grant", 
+    "QRIS Reward Distribution", 
     "ArPay Smart Contract",
-    "Decentralized Commerce"
+    "DePIN Infrastructure"
   ],
   openGraph: {
     title: "ArPay Protocol Documentation",
@@ -44,7 +44,7 @@ export default function DocsLayout({
     "name": "ArPay Protocol Documentation",
     "alternateName": "ArPay Docs",
     "url": "https://docs.arpay.my.id",
-    "description": "Technical documentation, smart contract API, and architecture for the ArPay Peer-to-Fiat settlement protocol.",
+    "description": "Technical documentation, smart contract API, and architecture for the ArPay Eco-Reward settlement protocol.",
     "publisher": {
       "@type": "Organization",
       "name": "Arshaka Team"

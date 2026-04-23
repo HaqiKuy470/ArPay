@@ -20,7 +20,7 @@ ArPay implements a **tri-layer architecture** that cleanly separates concerns be
 │  • UX/UI                   • Web3.js / Wallet Adapter     │
 └───────────────────────────────────────────────────────────┘
                             │
-                            │ signs & submits USDC tx
+                            │ signs & submits USDC tx (by sponsor)
                             ▼
 ┌───────────────────────────────────────────────────────────┐
 │                   ON-CHAIN LAYER (L2)                     │
@@ -61,7 +61,7 @@ ArPay implements a **tri-layer architecture** that cleanly separates concerns be
                             │ POST /disbursements (IDR)
                             ▼
 ┌───────────────────────────────────────────────────────────┐
-│                 MERCHANT BANK ACCOUNT                     │
+│                 COMMUNITY BANK ACCOUNT                     │
 │                                                           │
 │                   BI-FAST Settlement                      │
 │              (Bank Indonesia Instant Transfer)            │
@@ -78,7 +78,7 @@ ArPay implements a **tri-layer architecture** that cleanly separates concerns be
 - **Framework:** Next.js 14 with App Router
 - **PWA:** Progressive Web App (installable, offline-capable)
 - **Wallet Integration:** `@solana/wallet-adapter-react`
-- **Payment Protocol:** Solana Pay URI scheme
+- **Settlement Protocol:** Solana Pay URI scheme
 - **Price Oracle Client:** Pyth Network SDK
 
 ### Key Components
@@ -87,7 +87,7 @@ ArPay implements a **tri-layer architecture** that cleanly separates concerns be
 ```typescript
 // Decodes QRIS QR code payload
 const decodeQRIS = (qrPayload: string) => {
-  // EMVCo Merchant Presented QR format
+  // EMVCo Recipient-Presented (QRIS) format
   return {
     merchantId: extractNMID(qrPayload),    // National Merchant ID
     amount: extractAmount(qrPayload),       // IDR in minor units
@@ -114,14 +114,14 @@ const getUSDCtoIDR = async () => {
 #### 3. Transaction Builder
 ```typescript
 // Constructs Solana Pay URI
-const buildSolanaPayURI = (params: PaymentParams) => {
+const buildSolanaPayURI = (params: SettlementParams) => {
   const url = new URL('solana:' + ARPAY_PROGRAM_ID);
   
   url.searchParams.set('amount', params.usdcAmount);
   url.searchParams.set('spl-token', USDC_MINT);
   url.searchParams.set('reference', generateReference());
   url.searchParams.set('label', 'ArPay Settlement');
-  url.searchParams.set('message', `Pay ${params.idrAmount} IDR to ${params.merchantName}`);
+  url.searchParams.set('message', `Grant ${params.idrAmount} IDR to ${params.merchantName}`);
   
   return url.toString();
 };
@@ -129,11 +129,11 @@ const buildSolanaPayURI = (params: PaymentParams) => {
 
 ### User Flow
 
-1. **Scan QR:** User opens PWA, scans QRIS code at merchant POS
+1. **Scan QR:** Sponsor opens PWA, scans QRIS code at community POS
 2. **Preview:** PWA decodes NMID and IDR amount, fetches real-time USDC/IDR rate
-3. **Approve:** User reviews conversion (e.g., "100,000 IDR = 6.85 USDC")
-4. **Sign:** Wallet adapter prompts signature from Phantom/Solflare/etc
-5. **Confirm:** PWA displays transaction status and merchant notification
+3. **Approve:** Sponsor reviews conversion (e.g., "100,000 IDR = 6.85 USDC")
+4. **Sign:** Wallet adapter prompts signature from Sponsor wallet (Phantom/Solflare/etc)
+5. **Confirm:** PWA displays transaction status to sponsor and community notification
 
 ## Layer 2: Solana Smart Contract
 
@@ -151,7 +151,7 @@ pub mod arpay {
     use super::*;
 
     /// Initiates a settlement request
-    /// Transfers USDC from payer to PDA escrow
+    /// Transfers USDC from sponsor to PDA escrow
     pub fn initiate_settlement(
         ctx: Context<InitiateSettlement>,
         merchant_id: String,
@@ -181,7 +181,7 @@ pub mod arpay {
             merchant_id,
             idr_amount,
             usdc_amount,
-            payer: ctx.accounts.payer.key(),
+            payer: ctx.accounts.payer.key(), // Sponsor pubkey
             nonce,
             timestamp: Clock::get()?.unix_timestamp,
         });
@@ -211,7 +211,7 @@ pub mod arpay {
             );
         }
 
-        // Transfer to treasury or refund to payer
+        // Transfer to treasury or refund to sponsor
         let recipient = if to_treasury {
             &ctx.accounts.treasury_token_account
         } else {
@@ -220,7 +220,7 @@ pub mod arpay {
 
         let seeds = &[
             b"escrow",
-            escrow.payer.as_ref(),
+            escrow.payer.as_ref(), // Sponsor ref
             escrow.merchant_id.as_bytes(),
             &escrow.nonce.to_le_bytes(),
             &[escrow.bump],
@@ -274,7 +274,7 @@ pub struct SettlementRequested {
     pub merchant_id: String,    // NMID from QRIS
     pub idr_amount: u64,         // IDR in cents (Rp 100.000 = 10000000)
     pub usdc_amount: u64,        // USDC in base units (6 decimals)
-    pub payer: Pubkey,           // For refund routing
+    pub payer: Pubkey,           // For sponsor refund routing
     pub nonce: u64,              // PDA seed component
     pub timestamp: i64,          // Unix timestamp
 }
@@ -358,7 +358,7 @@ class ArPayOracle:
     
     async def disburse_fiat(self, merchant_id: str, amount_idr: int):
         """Call Xendit API to disburse IDR"""
-        # Map NMID to bank account (cached from merchant registry)
+        # Map NMID to bank account (cached from community registry)
         bank_info = await self.get_merchant_bank(merchant_id)
         
         payload = {
@@ -390,10 +390,10 @@ class ArPayOracle:
         pass
     
     async def initiate_refund(self, event: dict):
-        """Refund USDC to payer after disbursement failure"""
+        """Refund USDC to sponsor after disbursement failure"""
         # Wait for timeout window to elapse
         # Anyone can call release_escrow with to_treasury=false after timeout
-        # No action needed - permissionless refund
+        # No action needed - permissionless sponsor refund
         logger.info(f"Timeout refund available for nonce {event['nonce']}")
 ```
 
@@ -473,14 +473,14 @@ async def recover_unprocessed_settlements(self):
 
 ```
 ┌──────────┐
-│  User    │
+│  Sponsor │
 │  Scans   │
 │  QRIS    │
 └────┬─────┘
      │
      ▼
 ┌────────────────────────────────────────────┐
-│  PWA: Decode NMID, Amount (IDR)            │
+│  PWA: Decode NMID, Amount (IDR) (for sponsor)  │
 │  Fetch Rate: USDC/IDR from Pyth + API      │
 │  Calculate: USDC amount = IDR / rate       │
 │  Build: Solana Pay URI                     │
@@ -488,14 +488,14 @@ async def recover_unprocessed_settlements(self):
      │
      ▼
 ┌────────────────────────────────────────────┐
-│  Wallet: User reviews & signs TX           │
+│  Wallet: Sponsor reviews & signs TX         │
 │  Submit: Transaction to Solana RPC         │
 └────┬───────────────────────────────────────┘
      │
      ▼
 ┌────────────────────────────────────────────┐
 │  Solana: Execute initiate_settlement()     │
-│  - Transfer USDC to PDA                    │
+│  - Transfer USDC from sponsor to PDA       │
 │  - Emit SettlementRequested event          │
 │  - Return success                          │
 └────┬───────────────────────────────────────┘
@@ -505,7 +505,7 @@ async def recover_unprocessed_settlements(self):
 │  Oracle: Receive event via WebSocket       │
 │  - Parse merchant_id, idr_amount           │
 │  - Verify block confirmation               │
-│  - Lookup merchant bank details            │
+│  - Lookup community bank details            │
 └────┬───────────────────────────────────────┘
      │
      ▼
@@ -518,14 +518,14 @@ async def recover_unprocessed_settlements(self):
      │
      ▼
 ┌────────────────────────────────────────────┐
-│  BI-FAST: Route payment to merchant bank   │
+│  BI-FAST: Route settlement to community bank   │
 │  - Real-time gross settlement              │
 │  - Irrevocable credit                      │
 └────┬───────────────────────────────────────┘
      │
      ▼
 ┌────────────────────────────────────────────┐
-│  Merchant Bank: Receive IDR                │
+│  Community Bank: Receive IDR                │
 │  - Instant notification                    │
 │  - Balance updated                         │
 └────┬───────────────────────────────────────┘
@@ -553,9 +553,9 @@ async def recover_unprocessed_settlements(self):
 | **Solana Network** | Correct finality, no double-spend | Decentralized consensus, 1500+ validators |
 | **ArPay Program** | Correct escrow logic | Open-source, auditable, deployed at fixed ID |
 | **Oracle Bridge** | Honest event relay | On-chain auditability, timeout refunds |
-| **Payment Gateway** | Honest fiat disbursement | Licensed by OJK, regulated entity |
-| **Merchant** | (None) | Merchant trusts own bank relationship |
-| **Payer** | (None) | Self-custody wallet, verifiable TX |
+| **Fiat Disbursement API** | Honest fiat disbursement | Licensed by OJK, regulated entity |
+| **Community Receiver** | (None) | Community trusts own bank relationship |
+| **Sponsor** | (None) | Self-custody wallet, verifiable TX |
 
 ### Centralization Analysis
 
@@ -604,7 +604,7 @@ async def process_batch(events: List[Event]):
 ### Caching Strategy
 
 ```python
-# Cache merchant bank details to reduce API calls
+# Cache community bank details to reduce API calls
 from cachetools import TTLCache
 
 merchant_cache = TTLCache(maxsize=10000, ttl=3600)  # 1 hour TTL
@@ -614,7 +614,7 @@ async def get_merchant_bank(merchant_id: str):
         return merchant_cache[merchant_id]
     
     # Fetch from database
-    bank_info = await db.query("SELECT * FROM merchants WHERE nmid = ?", merchant_id)
+    bank_info = await db.query("SELECT * FROM communities WHERE nmid = ?", merchant_id)
     merchant_cache[merchant_id] = bank_info
     
     return bank_info

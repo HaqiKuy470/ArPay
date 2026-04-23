@@ -18,7 +18,7 @@ Before you begin, ensure you have:
 ```bash
 # What we'll build
 ┌─────────────┐
-│ Your App    │  ← Integrates ArPay payment flow
+│ Your App    │  ← Integrates ArPay grant flow
 └──────┬──────┘
        │
        ▼
@@ -29,7 +29,7 @@ Before you begin, ensure you have:
        ▼
 ┌─────────────┐
 │ Solana      │  ← Executes smart contract
-└─────────────┘
+└──────┬──────┘
 ```
 
 ## Option 1: Frontend Integration (No Backend Required)
@@ -83,10 +83,10 @@ export const WalletContextProvider: FC<{ children: React.ReactNode }> = ({ child
 };
 ```
 
-### Step 3: Create Payment Component
+### Step 3: Create Grant Component
 
 ```tsx
-// components/ArPayButton.tsx
+// components/ArPayGrantButton.tsx
 'use client';
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
@@ -98,20 +98,20 @@ import { ArPayIDL } from '@/idl/arpay';
 const ARPAY_PROGRAM_ID = new PublicKey('ArPayXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
-interface ArPayButtonProps {
-  merchantId: string;      // QRIS NMID
+interface ArPayGrantButtonProps {
+  recipientId: string;      // QRIS NMID
   amountIDR: number;        // Amount in IDR (e.g., 100000 for Rp 100,000)
   onSuccess?: (signature: string) => void;
   onError?: (error: Error) => void;
 }
 
-export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPayButtonProps) {
+export function ArPayGrantButton({ recipientId, amountIDR, onSuccess, onError }: ArPayGrantButtonProps) {
   const { connection } = useConnection();
   const wallet = useWallet();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>('');
 
-  const handlePayment = async () => {
+  const handleGrant = async () => {
     if (!wallet.publicKey || !wallet.signTransaction) {
       alert('Please connect your wallet first!');
       return;
@@ -136,13 +136,13 @@ export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPay
       const nonce = Date.now(); // Use timestamp as nonce
       const tx = await program.methods
         .initiateSettlement(
-          merchantId,
+          recipientId,
           amountIDR * 100,  // Convert to cents
           usdcAmount,
           nonce
         )
         .accounts({
-          payer: wallet.publicKey,
+          sponsor: wallet.publicKey,
           // ... other accounts (derived programmatically)
         })
         .rpc();
@@ -156,8 +156,8 @@ export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPay
       await pollSettlementStatus(tx);
       
     } catch (error) {
-      console.error('Payment failed:', error);
-      setStatus('Payment failed');
+      console.error('Grant failed:', error);
+      setStatus('Grant failed');
       onError?.(error as Error);
     } finally {
       setLoading(false);
@@ -166,7 +166,7 @@ export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPay
 
   return (
     <button
-      onClick={handlePayment}
+      onClick={handleGrant}
       disabled={loading || !wallet.connected}
       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50"
     >
@@ -176,7 +176,7 @@ export function ArPayButton({ merchantId, amountIDR, onSuccess, onError }: ArPay
           {status}
         </span>
       ) : (
-        `Pay Rp ${amountIDR.toLocaleString('id-ID')}`
+        `Grant Rp ${amountIDR.toLocaleString('id-ID')}`
       )}
     </button>
   );
@@ -215,7 +215,7 @@ async function pollSettlementStatus(signature: string, maxAttempts = 20): Promis
 
 ```tsx
 // app/page.tsx
-import { ArPayButton } from '@/components/ArPayButton';
+import { ArPayGrantButton } from '@/components/ArPayGrantButton';
 import { WalletContextProvider } from '@/providers/WalletProvider';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
@@ -229,18 +229,18 @@ export default function Home() {
           <WalletMultiButton className="mb-4" />
           
           <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Pay Merchant</h2>
+            <h2 className="text-xl font-semibold mb-4">Distribute Eco-Reward</h2>
             
-            <ArPayButton
-              merchantId="ID1234567890123"  // QRIS NMID
+            <ArPayGrantButton
+              recipientId="ID1234567890123"  // QRIS NMID
               amountIDR={100000}             // Rp 100,000
               onSuccess={(sig) => {
-                console.log('Payment successful!', sig);
-                alert('Payment sent! Merchant will receive IDR in ~5 seconds.');
+                console.log('Grant successful!', sig);
+                alert('Grant sent! Community will receive IDR in ~5 seconds.');
               }}
               onError={(err) => {
-                console.error('Payment failed:', err);
-                alert('Payment failed. Please try again.');
+                console.error('Grant distribution failed:', err);
+                alert('Grant distribution failed. Please try again.');
               }}
             />
           </div>
@@ -286,20 +286,20 @@ app.use(express.json());
 const connection = new Connection('https://api.mainnet-beta.solana.com');
 const ARPAY_PROGRAM_ID = new PublicKey('ArPayXXX...');
 
-// Endpoint: Create payment intent
-app.post('/api/create-payment', async (req, res) => {
+// Endpoint: Create settlement intent
+app.post('/api/create-grant', async (req, res) => {
   const { merchantId, amountIDR } = req.body;
   
   // 1. Fetch current USDC/IDR rate
   const rate = await fetchExchangeRate();
   const usdcAmount = Math.ceil((amountIDR / rate) * 1_000_000);
   
-  // 2. Generate unique payment reference
-  const paymentId = generatePaymentId();
+  // 2. Generate unique grant reference
+  const grantId = generateGrantId();
   
   // 3. Store in database
-  await db.payments.create({
-    id: paymentId,
+  await db.grants.create({
+    id: grantId,
     merchantId,
     amountIDR,
     usdcAmount,
@@ -309,7 +309,7 @@ app.post('/api/create-payment', async (req, res) => {
   });
   
   res.json({
-    paymentId,
+    grantId,
     usdcAmount,
     rate,
     expiresAt: Date.now() + 120_000, // 2 minutes
@@ -317,22 +317,22 @@ app.post('/api/create-payment', async (req, res) => {
 });
 
 // Endpoint: Verify payment status
-app.get('/api/payment/:id', async (req, res) => {
-  const payment = await db.payments.findOne({ id: req.params.id });
+app.get('/api/grant/:id', async (req, res) => {
+  const grant = await db.grants.findOne({ id: req.params.id });
   
-  if (!payment) {
-    return res.status(404).json({ error: 'Payment not found' });
+  if (!grant) {
+    return res.status(404).json({ error: 'Grant not found' });
   }
   
   // Query Solana for transaction status
-  const escrowPda = deriveEscrowPDA(payment.merchantId, payment.nonce);
+  const escrowPda = deriveEscrowPDA(grant.merchantId, grant.nonce);
   const escrowAccount = await connection.getAccountInfo(escrowPda);
   
   if (!escrowAccount) {
-    payment.status = 'settled'; // Escrow released
+    grant.status = 'settled'; // Escrow released
   }
   
-  res.json(payment);
+  res.json(grant);
 });
 
 // Webhook: Receive settlement notifications from oracle
@@ -345,8 +345,8 @@ app.post('/webhooks/settlement', async (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
   
-  // Update payment status
-  await db.payments.updateOne(
+  // 3. Update grant status
+  await db.grants.updateOne(
     { merchantId, nonce },
     { status, settledAt: new Date() }
   );
@@ -366,7 +366,7 @@ app.listen(3001, () => {
 
 ## Option 3: QR Code Integration
 
-Enable physical merchants to accept crypto payments via QRIS scanners.
+Enable physical communities to accept green grants via QRIS scanners.
 
 ### Generate ArPay-Compatible QRIS
 
@@ -382,7 +382,7 @@ interface QRISPayload {
 }
 
 export async function generateArPayQRIS(payload: QRISPayload): Promise<string> {
-  // Encode QRIS according to EMVCo Merchant Presented QR spec
+  // Encode QRIS according to EMVCo Recipient-Presented (QRIS) spec
   const qrisData = encodeEMVCo({
     payloadFormatIndicator: '01',
     pointOfInitiationMethod: '12',  // Dynamic QR
@@ -515,7 +515,7 @@ describe('arpay', () => {
     const tx = await program.methods
       .initiateSettlement(merchantId, idrAmount, usdcAmount, nonce)
       .accounts({
-        payer: provider.wallet.publicKey,
+        sponsor: provider.wallet.publicKey,
         // ... derived accounts
       })
       .rpc();
@@ -542,7 +542,7 @@ describe('arpay', () => {
     // ... (implementation omitted)
   });
 
-  it('Refunds payer after timeout', async () => {
+  it('Refunds sponsor after timeout', async () => {
     // Test timeout refund mechanism
     // ... (implementation omitted)
   });
@@ -623,7 +623,7 @@ docker run -d --env-file .env --name arpay-oracle arpay-oracle
   - [ ] Insufficient USDC balance
   - [ ] Network disconnection
   - [ ] Rate slippage exceeded
-  - [ ] Payment gateway failure
+  - [ ] Fiat Disbursement API failure
   - [ ] Duplicate transaction (nonce replay)
 
 ---
@@ -632,7 +632,7 @@ docker run -d --env-file .env --name arpay-oracle arpay-oracle
 
 ### Issue: "Simulation failed: Insufficient funds"
 
-**Solution:** Ensure your wallet has enough SOL for transaction fees (~0.00001 SOL) and USDC for the payment amount.
+**Solution:** Ensure your wallet has enough SOL for transaction fees (~0.00001 SOL) and USDC for the grant amount.
 
 ```bash
 # Check balances

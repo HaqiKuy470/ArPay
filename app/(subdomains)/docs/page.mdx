@@ -2,15 +2,15 @@
 
 ## Overview
 
-ArPay is a **peer-to-fiat settlement protocol** that bridges the gap between cryptocurrency holders and traditional merchants. It enables seamless conversion of on-chain USDC to local fiat currency (IDR) without requiring merchants to interact with any cryptocurrency infrastructure.
+ArPay is an **eco-incentive settlement protocol** that bridges the gap between Web3 sustainability sponsors and local communities. It enables the seamless conversion of on-chain environmental grants (USDC) to local fiat currency (IDR) without requiring receiving communities to interact with any cryptocurrency infrastructure.
 
 ## The Problem
 
-Commerce between digital asset holders and traditional merchants faces a fundamental mismatch:
+Funding for local green initiatives faces a fundamental mismatch:
 
-- **Merchants** operate exclusively within banking systems that recognize legal tender
-- **Crypto holders** possess value in programmable, censorship-resistant tokens
-- **No direct settlement** exists that satisfies both parties without forcing one to adopt the other's infrastructure
+- **Local Communities** operate exclusively within banking systems that recognize legal tender.
+- **Eco-sponsors & DePIN networks** possess value in programmable, globally verifiable tokens.
+- **No direct settlement** exists that satisfies both parties without forcing communities to understand crypto wallets or adopt the other's infrastructure.
 
 ### Current Solutions Fall Short
 
@@ -27,18 +27,18 @@ Commerce between digital asset holders and traditional merchants faces a fundame
   <div className="border rounded-lg p-4">
     <h4 className="font-bold text-red-600">❌ Crypto POS Terminals</h4>
     <ul className="text-sm mt-2 space-y-1">
-      <li>• Merchants bear regulatory exposure</li>
+      <li>• Communities bear regulatory exposure</li>
       <li>• Requires crypto knowledge</li>
       <li>• Near-zero adoption</li>
     </ul>
   </div>
   
   <div className="border rounded-lg p-4">
-    <h4 className="font-bold text-red-600">❌ Payment Plugins</h4>
+    <h4 className="font-bold text-red-600">❌ Grant Plugins</h4>
     <ul className="text-sm mt-2 space-y-1">
-      <li>• Merchants must accept novel instruments</li>
+      <li>• Communities must accept novel instruments</li>
       <li>• Complex integration</li>
-      <li>• Limited merchant acceptance</li>
+      <li>• Limited community acceptance</li>
     </ul>
   </div>
 </div>
@@ -47,20 +47,19 @@ Commerce between digital asset holders and traditional merchants faces a fundame
 
 ArPay resolves this asymmetry through **protocol-level separation of concerns**:
 
-<div className="bg-blue-50 border-l-4 border-blue-500 p-4 my-6">
+<div className="bg-green-50 border-l-4 border-green-500 p-4 my-6">
   <div className="flex">
     <div className="flex-shrink-0">
        {/* SVG Icon */}
     </div>
     <div className="ml-3">
-      {/* GANTI <p> JADI <div> DI SINI */}
-      <div className="text-sm text-blue-700 font-medium">
-        <strong>User-facing layer:</strong> Operates entirely on Solana blockchain
+      <div className="text-sm text-green-800 font-medium">
+        <strong>Sponsor-facing layer:</strong> Operates entirely on Solana blockchain
       </div>
-      <div className="text-sm text-blue-700 mt-1">
-        <strong>Merchant-facing layer:</strong> Operates entirely within existing domestic banking
+      <div className="text-sm text-green-800 mt-1">
+        <strong>Community-facing layer:</strong> Operates entirely within existing domestic banking
       </div>
-      <div className="text-sm text-blue-700 mt-1">
+      <div className="text-sm text-green-800 mt-1">
         <strong>Bridge:</strong> Cryptographically-verified Python daemon connects both layers
       </div>
     </div>
@@ -70,41 +69,41 @@ ArPay resolves this asymmetry through **protocol-level separation of concerns**:
 ## Key Features
 
 ### ⚡ Lightning Fast Settlement
-Complete settlement cycle from transaction signature to merchant bank credit in **3-6 seconds** under nominal network conditions.
+Complete settlement cycle from grant signature to community bank credit in **3-6 seconds** under nominal network conditions.
 
 ### 🔒 Non-Custodial & Trustless
-- Users maintain self-custody via standard Solana wallets
-- Merchants never touch crypto—receive only legal tender
+- Sponsors maintain self-custody via standard Solana wallets
+- Communities never touch crypto—receive only legal tender
 - No intermediary can freeze or confiscate funds
 
 ### 🛡️ Atomic Settlement Guarantee
-**Formal guarantee:** Either the merchant receives fiat OR the user receives a full USDC refund. No intermediate state where funds are lost.
+**Formal guarantee:** Either the community receives fiat OR the sponsor receives a full USDC refund. No intermediate state where funds are lost.
 
 ### 🏦 QRIS Native Integration
-Leverages Indonesia's standardized QR payment system (QRIS) with 30M+ merchant terminals nationwide.
+Leverages Indonesia's standardized QR settlement system (QRIS) with 30M+ community endpoints nationwide.
 
 ### 📊 Transparent & Auditable
-All on-chain operations are publicly verifiable on Solana blockchain. Open-source smart contract code.
+All on-chain operations are publicly verifiable on Solana blockchain. Open-source smart contract code for ESG reporting.
 
 ## How It Works (Simplified)
 
 ```mermaid
 sequenceDiagram
-    participant User
+    participant Sponsor
     participant Wallet
     participant Solana
     participant Oracle
-    participant Gateway
-    participant Merchant
+    participant FiatAPI
+    participant Receiver
 
-    User->>Wallet: Scan QRIS code
-    Wallet->>User: Show USDC amount
-    User->>Solana: Sign & submit transaction
+    Sponsor->>Wallet: Scan community QRIS code
+    Wallet->>Sponsor: Show USDC grant amount
+    Sponsor->>Solana: Sign & submit grant transaction
     Solana->>Solana: Lock USDC in PDA escrow
     Solana->>Oracle: Emit SettlementRequested event
-    Oracle->>Gateway: POST /disbursements (IDR)
-    Gateway->>Merchant: Transfer IDR via BI-FAST
-    Merchant->>Merchant: Receive fiat in bank
+    Oracle->>FiatAPI: POST /disbursements (IDR)
+    FiatAPI->>Receiver: Transfer IDR via BI-FAST
+    Receiver->>Receiver: Receive fiat reward in bank
     Oracle->>Solana: Release USDC from escrow
 ```
 
@@ -112,14 +111,14 @@ sequenceDiagram
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **Smart Contract** | Rust + Anchor 0.29 | Type-safe, auditable escrow logic |
+| **Smart Contract** | Rust + Anchor 0.29 | Type-safe, auditable grant escrow |
 | **Blockchain** | Solana Mainnet | Sub-second finality, 65K+ TPS |
 | **Frontend** | Next.js 14 PWA | Mobile-first, no app install required |
 | **Stablecoin** | USDC (SPL Token) | Price-stable, regulated, liquid |
 | **Oracle** | Pyth Network | First-party on-chain price feeds |
 | **Bridge** | Python 3.11 + asyncio | Event listener & fiat dispatcher |
-| **Payment Rail** | BI-FAST | Indonesia instant transfer network |
-| **Payment Gateway** | Xendit API | Licensed OJK processor |
+| **Settlement Rail** | BI-FAST | Indonesia instant transfer network |
+| **Fiat Disbursement API** | Xendit API | Licensed OJK processor |
 
 ## Performance Metrics
 
@@ -130,91 +129,91 @@ Under nominal conditions on Solana Mainnet-Beta with premium RPC:
 | QR Scan → Wallet Prompt | `<500ms` | `<1,200ms` |
 | Wallet Sign → Block Confirmed | `400ms` | `1,200ms` |
 | Block Confirmed → Event Received | `80ms` | `400ms` |
-| Event → Gateway API Response | `300ms` | `900ms` |
-| Gateway → BI-FAST Credit | `800ms` | `2,000ms` |
-| **Total (End-to-End)** | **~2.5s** | **~6.0s** |
+| Event → Fiat API Response | `300ms` | `900ms` |
+| Fiat API → BI-FAST Credit | `800ms` | `2,000ms` |
+| **Total (End-to-End)** | **\~2.5s** | **\~6.0s** |
 
 ## Target Market
 
-**Primary:** Indonesia — 30M+ QRIS merchants, 270M+ population, high mobile penetration
+**Primary:** Indonesia — 30M+ QRIS community endpoints, 270M+ population, high mobile penetration
 
 **Generalizable:** Any market with:
-- Standardized QR payment scheme
-- Licensed Payment Gateway API
-- Instant fiat settlement network
+
+  - Standardized QR settlement scheme
+  - Licensed Fiat Disbursement API
+  - Instant fiat settlement network
 
 ## Use Cases
 
-1. **Cross-border remittances** — Send USDC globally, receiver gets local fiat instantly
-2. **Crypto spending** — Use crypto holdings for everyday purchases without merchant onboarding
-3. **Tourism** — Visitors pay with crypto, merchants receive local currency
-4. **Freelancer payments** — Receive crypto wages, spend as fiat instantly
-5. **Merchant adoption** — Zero-risk crypto acceptance for traditional businesses
+1.  **DePIN Sensor Rewards** — Solar or waste-tracking sensors automatically trigger fiat payouts to host communities.
+2.  **Carbon Credit Disbursements** — Direct fiat incentives to individuals participating in recycling programs.
+3.  **NGO Grant Distribution** — Transparent, on-chain tracking of volunteer operational funds.
+4.  **Eco-Tourism** — Visitors sponsor local conservation efforts effortlessly via QRIS.
 
 ## Getting Started
 
 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
-  <a href="/developer" className="block p-6 border rounded-lg hover:shadow-lg transition">
-    <h3 className="text-xl font-bold mb-2">👨‍💻 For Developers</h3>
-    <p className="text-gray-600">Integrate ArPay, run the oracle, deploy smart contracts</p>
-  </a>
-  
-  <a href="#" className="block p-6 border rounded-lg hover:shadow-lg transition">
-    <h3 className="text-xl font-bold mb-2">🏪 For Merchants</h3>
-    <p className="text-gray-600">Accept crypto payments without touching crypto</p>
-  </a>
-  
-  <a href="/architecture" className="block p-6 border rounded-lg hover:shadow-lg transition">
-    <h3 className="text-xl font-bold mb-2">🏗️ Architecture</h3>
-    <p className="text-gray-600">Deep dive into tri-layer protocol design</p>
-  </a>
-  
-  <a href="/security" className="block p-6 border rounded-lg hover:shadow-lg transition">
-    <h3 className="text-xl font-bold mb-2">🔐 Security</h3>
-    <p className="text-gray-600">Fund safety, oracle manipulation, formal guarantees</p>
-  </a>
+<a href="/developer" className="block p-6 border border-green-500/30 bg-green-500/5 rounded-lg hover:shadow-lg transition">
+<h3 className="text-xl font-bold mb-2 text-green-400">👨💻 For Developers</h3>
+<p className="text-gray-400">Integrate ArPay, run the oracle, deploy smart contracts</p>
+</a>
+
+<a href="#" className="block p-6 border border-green-500/30 bg-green-500/5 rounded-lg hover:shadow-lg transition">
+<h3 className="text-xl font-bold mb-2 text-green-400">🌿 For Communities</h3>
+<p className="text-gray-400">Accept green grants without touching crypto</p>
+</a>
+
+<a href="/architectur" className="block p-6 border border-white/10 rounded-lg hover:shadow-lg transition">
+<h3 className="text-xl font-bold mb-2">🏗️ Architecture</h3>
+<p className="text-gray-400">Deep dive into tri-layer protocol design</p>
+</a>
+
+<a href="/security" className="block p-6 border border-white/10 rounded-lg hover:shadow-lg transition">
+<h3 className="text-xl font-bold mb-2">🔐 Security</h3>
+<p className="text-gray-400">Fund safety, oracle manipulation, formal guarantees</p>
+</a>
 </div>
 
 ## Project Status
 
-<div className="bg-green-50 border border-green-200 rounded-lg p-4 my-6">
-  <h4 className="font-bold text-green-800 mb-2">✅ Completed</h4>
-  <ul className="space-y-1 text-sm text-green-700">
-    <li>• Solana smart contract deployed on mainnet</li>
-    <li>• PWA frontend with Solana Pay integration</li>
-    <li>• Oracle bridge with WebSocket event listener</li>
-    <li>• Xendit API integration for fiat disbursement</li>
-    <li>• End-to-end testing on Solana devnet</li>
-  </ul>
+<div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 my-6">
+<h4 className="font-bold text-green-400 mb-2">✅ Completed</h4>
+<ul className="space-y-1 text-sm text-green-200/70">
+<li>• Solana smart contract deployed on mainnet</li>
+<li>• PWA frontend with Solana Pay integration</li>
+<li>• Oracle bridge with WebSocket event listener</li>
+<li>• Xendit API integration for fiat disbursement</li>
+<li>• End-to-end testing on Solana devnet</li>
+</ul>
 </div>
 
-<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 my-6">
-  <h4 className="font-bold text-yellow-800 mb-2">🚧 In Progress</h4>
-  <ul className="space-y-1 text-sm text-yellow-700">
-    <li>• Mainnet beta testing with pilot merchants</li>
-    <li>• Formal security audit of smart contract</li>
-    <li>• Mobile app (iOS/Android native)</li>
-  </ul>
+<div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 my-6">
+<h4 className="font-bold text-yellow-400 mb-2">🚧 In Progress</h4>
+<ul className="space-y-1 text-sm text-yellow-200/70">
+<li>• Mainnet beta testing with eco-initiatives</li>
+<li>• Formal security audit of smart contract</li>
+<li>• DePIN hardware sensor integration</li>
+</ul>
 </div>
 
 ## Open Source
 
 ArPay is open-source and contributions are welcome:
 
-- **Smart Contract:** [github.com/arpay/smart-contract](https://github.com)
-- **Frontend:** [github.com/arpay/frontend](https://github.com)
-- **Oracle Bridge:** [github.com/arpay/oracle-bridge](https://github.com)
+  - **Smart Contract:** [github.com/arpay/smart-contract](https://github.com)
+  - **Frontend:** [github.com/arpay/frontend](https://github.com)
+  - **Oracle Bridge:** [github.com/arpay/oracle-bridge](https://github.com)
 
 ## Support & Contact
 
-- **Website:** [www.arpay.net](https://www.arpay.net)
-- **Email:** arshaka@gmail.com
-- **Documentation:** You're reading it! 📖
-- **Discord:** [Join our community](https://discord.gg)
-- **Twitter:** [@ArPayProtocol](https://twitter.com)
+  - **Website:** [www.arpay.my.id](https://www.arpay.my.id)
+  - **Email:** arshaka@zohomail.com
+  - **Documentation:** You're reading it! 📖
+  - **Discord:** [Join our community](https://discord.gg)
+  - **Twitter:** [@ArPayProtocol](https://twitter.com)
 
 ---
 
 <div className="text-center text-gray-500 text-sm mt-12">
-  ArPay, Indonesia 🇮🇩
+Arshaka Team, Malang, Indonesia 🇮🇩
 </div>
